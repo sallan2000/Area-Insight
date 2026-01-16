@@ -52,8 +52,11 @@ async function fetchAreaMetrics(postcode: string) {
 // Scoring Logic
 function calculateScores(metrics: any) {
   // Normalization helper (clamped 0-100)
+  // formula: score = 100 * (x - min) / (max - min)
   const normalize = (val: number, min: number, max: number) => {
-    return Math.min(100, Math.max(0, ((val - min) / (max - min)) * 100));
+    if (max === min) return 50;
+    const score = 100 * ((val - min) / (max - min));
+    return Math.min(100, Math.max(0, score));
   };
 
   // 2.2 Transport Score (0-30 stops range)

@@ -77,13 +77,12 @@ function calculateScores(metrics: any) {
   const schoolsScore = normalize(metrics.schoolCount, 0, 10) * 0.8 + 20; // Base baseline
 
   // 2.6 Liveability Score (Weighted Average)
-  // Weights (Assumed equal or custom)
-  // Let's use: T=25%, S=30%, A=25%, E=20%
+  // Weights: T=25%, S=25%, A=25%, E=25%
   const totalScore = (
     (transportScore * 0.25) +
-    (safetyScore * 0.30) +
+    (safetyScore * 0.25) +
     (amenitiesScore * 0.25) +
-    (schoolsScore * 0.20)
+    (schoolsScore * 0.25)
   );
 
   return {

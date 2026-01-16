@@ -13,7 +13,8 @@ async function fetchAreaMetrics(postcode: string) {
   
   const lat = geoData.result.latitude;
   const lng = geoData.result.longitude;
-  const outcode = geoData.result.outcode;
+  const street = geoData.result.parish || geoData.result.admin_ward || "";
+  const city = geoData.result.admin_district || geoData.result.parish || "";
 
   // 2. Fetch Crime Data (Real-time from UK Police API)
   const crimeRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`);
@@ -79,6 +80,8 @@ async function fetchAreaMetrics(postcode: string) {
   return {
     lat: String(lat),
     lng: String(lng),
+    street,
+    city,
     metrics: {
       crimeCount,
       crimeTrend,
@@ -173,7 +176,7 @@ export async function registerRoutes(
           postcode,
           lat: data.lat,
           lng: data.lng,
-          rawMetrics: data.metrics,
+          rawMetrics: { ...data.metrics, street: data.street, city: data.city },
           scores: scores
         });
 

@@ -54,14 +54,14 @@ async function fetchAreaMetrics(postcode: string) {
   const elements = osmData.elements;
 
   const busStops = elements.filter((e: any) => e.tags?.highway === "bus_stop").length;
-  const trainStations = elements.filter((e: any) => e.tags?.railway === "station");
-  const schools = elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college");
+  const trainStations = elements.filter((e: any) => e.tags?.railway === "station").length;
+  const schoolsCount = elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college").length;
   const localAmenities = elements.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop"].includes(e.tags.amenity));
   
   const categories = new Set(localAmenities.map((e: any) => e.tags.amenity));
   
   // Distances and Densities
-  const trainDistance = trainStations.length > 0 ? 0.5 : 3.0; // Simplified for now
+  const trainDistance = trainStations > 0 ? 0.5 : 3.0; // Simplified for now
   const busStopDensity = busStops / 0.78; // Approx 500m radius area
   const diversityIndex = categories.size;
   const amenitiesPerKm2 = localAmenities.length / 3.14; // Approx 1km radius area
@@ -88,19 +88,21 @@ async function fetchAreaMetrics(postcode: string) {
       transport: {
         trainDistance,
         busStopDensity,
+        busStopCount: busStops,
+        stationCount: trainStations,
         commuteCityCenter,
         commuteMajorHub
       },
       amenities: {
         amenitiesPerKm2,
         diversityIndex,
+        totalCount: localAmenities.length,
         topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4))
       },
       schools: {
-        // Since we can't get Ofsted ratings easily via API, we use school count as a proxy for choice
         primaryRating: 80, // Baseline Good
         secondaryRating: 80,
-        count: schools.length
+        count: schoolsCount
       }
     }
   };

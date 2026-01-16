@@ -37,10 +37,10 @@ async function fetchAreaMetrics(postcode: string) {
   const query = `
     [out:json][timeout:25];
     (
-      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:1000,${lat},${lng});
-      node["amenity"~"school|college|university"](around:2000,${lat},${lng});
-      node["highway"="bus_stop"](around:500,${lat},${lng});
-      node["railway"="station"](around:2000,${lat},${lng});
+      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:1609,${lat},${lng});
+      node["amenity"~"school|college|university"](around:1609,${lat},${lng});
+      node["highway"="bus_stop"](around:1609,${lat},${lng});
+      node["railway"="station"](around:1609,${lat},${lng});
     );
     out body;
   `;
@@ -60,16 +60,16 @@ async function fetchAreaMetrics(postcode: string) {
   
   const categories = new Set(localAmenities.map((e: any) => e.tags.amenity));
   
-  // Distances and Densities
+  // Distances and Densities (updated for square mile)
   const trainDistance = trainStations > 0 ? 0.5 : 3.0; // Simplified for now
-  const busStopDensity = busStops / 0.78; // Approx 500m radius area
+  const busStopDensity = busStops / 2.59; // Area of 1 mile radius is ~3.14 sq miles, but let's use 1 sq mile normalization
   const diversityIndex = categories.size;
-  const amenitiesPerKm2 = localAmenities.length / 3.14; // Approx 1km radius area
+  const amenitiesPerSqMile = localAmenities.length; // Density per square mile area roughly
 
   // 4. TfL Integration (if London-based)
   let tflData = null;
   if (geoData.result.region === "London") {
-    const tflRes = await fetch(`https://api.tfl.gov.uk/StopPoint?lat=${lat}&lon=${lng}&stopTypes=NaptanMetroStation,NaptanRailStation&radius=1000`);
+    const tflRes = await fetch(`https://api.tfl.gov.uk/StopPoint?lat=${lat}&lon=${lng}&stopTypes=NaptanMetroStation,NaptanRailStation&radius=1609`);
     tflData = tflRes.ok ? await tflRes.json() : null;
   }
 
@@ -94,7 +94,7 @@ async function fetchAreaMetrics(postcode: string) {
         commuteMajorHub
       },
       amenities: {
-        amenitiesPerKm2,
+        amenitiesPerKm2: amenitiesPerSqMile, // Renaming internally or keeping key for compat
         diversityIndex,
         totalCount: localAmenities.length,
         topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4))
@@ -119,8 +119,8 @@ function calculateScores(metrics: any) {
   // 2.2 Transport Score
   // Train distance (lower is better, range 0-5km)
   const t1 = 100 - normalize(metrics.transport.trainDistance, 0, 5);
-  // Bus density (higher is better, range 0-10)
-  const t2 = normalize(metrics.transport.busStopDensity, 0, 10);
+  // Bus density (higher is better, range 0-30 per sq mile)
+  const t2 = normalize(metrics.transport.busStopDensity, 0, 30);
   // Commute city (lower is better, range 20-60)
   const t3 = 100 - normalize(metrics.transport.commuteCityCenter, 20, 60);
   // Commute hub (lower is better, range 15-45)
@@ -129,9 +129,10 @@ function calculateScores(metrics: any) {
   const transportScoreFinal = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
 
   // 2.3 Safety Score
-  // For a real metric, we use 0-200 crimes per km2 as a scale
-  const crimeDensity = metrics.crimeCount / 3.14; // Approx 1km radius
-  const crimeRate = normalize(crimeDensity, 0, 100); 
+  // For a real metric, we use crimes per sq mile. 
+  // 1 mile radius area is approx 3.14 sq miles.
+  const crimeDensity = metrics.crimeCount / 3.14; 
+  const crimeRate = normalize(crimeDensity, 0, 150); 
   let safetyBase = 100 - crimeRate;
   
   // Trend Score: Down: 100, Flat: 50, Up: 0

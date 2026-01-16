@@ -13,34 +13,68 @@ async function fetchAreaMetrics(postcode: string) {
   
   const lat = geoData.result.latitude;
   const lng = geoData.result.longitude;
+  const outcode = geoData.result.outcode;
 
-  // 2. Fetch Crime Data (Real)
+  // 2. Fetch Crime Data (Real-time from UK Police API)
   const crimeRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`);
   const crimes = crimeRes.ok ? await crimeRes.json() : [];
   const crimeCount = crimes.length;
   
-  // Calculate trend (mocked for now)
-  const crimeTrend = Math.random() > 0.5 ? "stable" : (Math.random() > 0.5 ? "up" : "down");
+  // Real crime trend (last month vs month before)
+  const today = new Date();
+  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const monthBefore = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+  const monthBeforeStr = `${monthBefore.getFullYear()}-${String(monthBefore.getMonth() + 1).padStart(2, '0')}`;
 
-  // 3. Mock other detailed metrics based on seed
-  const seed = Math.abs(lat + lng);
+  const crimeHistRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${monthBeforeStr}`);
+  const histCrimes = crimeHistRes.ok ? await crimeHistRes.json() : [];
+  const crimeTrend = crimes.length < histCrimes.length ? "down" : (crimes.length > histCrimes.length ? "up" : "stable");
+
+  // 3. Amenities & Schools from OpenStreetMap (Overpass API)
+  const overpassUrl = "https://overpass-api.de/api/interpreter";
+  const query = `
+    [out:json][timeout:25];
+    (
+      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:1000,${lat},${lng});
+      node["amenity"~"school|college|university"](around:2000,${lat},${lng});
+      node["highway"="bus_stop"](around:500,${lat},${lng});
+      node["railway"="station"](around:2000,${lat},${lng});
+    );
+    out body;
+  `;
   
-  // Transport factors
-  const trainDistance = (seed * 10) % 5; // 0-5km
-  const busStopDensity = (seed * 100) % 10; // 0-10 per km2
-  const commuteCityCenter = 20 + (seed * 100) % 40; // 20-60 mins
-  const commuteMajorHub = 15 + (seed * 100) % 30; // 15-45 mins
+  const osmRes = await fetch(overpassUrl, {
+    method: "POST",
+    body: `data=${encodeURIComponent(query)}`
+  });
+  
+  const osmData = osmRes.ok ? await osmRes.json() : { elements: [] };
+  const elements = osmData.elements;
 
-  // Amenities factors
-  const amenitiesPerKm2 = 5 + (seed * 100) % 25; // 5-30
-  const amenityCategories = ["cafe", "park", "gym", "grocery", "pharmacy", "library", "restaurant"];
-  const diversityIndex = Math.floor(2 + (seed * 10) % 5); // 2-7
-  const topRatedPlaces = Math.floor((seed * 10) % 10); // 0-10
+  const busStops = elements.filter((e: any) => e.tags?.highway === "bus_stop").length;
+  const trainStations = elements.filter((e: any) => e.tags?.railway === "station");
+  const schools = elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college");
+  const localAmenities = elements.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop"].includes(e.tags.amenity));
+  
+  const categories = new Set(localAmenities.map((e: any) => e.tags.amenity));
+  
+  // Distances and Densities
+  const trainDistance = trainStations.length > 0 ? 0.5 : 3.0; // Simplified for now
+  const busStopDensity = busStops / 0.78; // Approx 500m radius area
+  const diversityIndex = categories.size;
+  const amenitiesPerKm2 = localAmenities.length / 3.14; // Approx 1km radius area
 
-  // School factors (Ofsted ratings: 100, 80, 40, 20)
-  const ratings = [100, 80, 40, 20];
-  const primaryRating = ratings[Math.floor(seed * 10) % 4];
-  const secondaryRating = ratings[Math.floor(seed * 20) % 4];
+  // 4. TfL Integration (if London-based)
+  let tflData = null;
+  if (geoData.result.region === "London") {
+    const tflRes = await fetch(`https://api.tfl.gov.uk/StopPoint?lat=${lat}&lon=${lng}&stopTypes=NaptanMetroStation,NaptanRailStation&radius=1000`);
+    tflData = tflRes.ok ? await tflRes.json() : null;
+  }
+
+  // Calculate commute (simplified fallback)
+  const commuteCityCenter = tflData ? 25 : 45; 
+  const commuteMajorHub = tflData ? 15 : 30;
 
   return {
     lat: String(lat),
@@ -57,11 +91,13 @@ async function fetchAreaMetrics(postcode: string) {
       amenities: {
         amenitiesPerKm2,
         diversityIndex,
-        topRatedPlaces
+        topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4))
       },
       schools: {
-        primaryRating,
-        secondaryRating
+        // Since we can't get Ofsted ratings easily via API, we use school count as a proxy for choice
+        primaryRating: 80, // Baseline Good
+        secondaryRating: 80,
+        count: schools.length
       }
     }
   };
@@ -88,7 +124,9 @@ function calculateScores(metrics: any) {
   const transportScoreFinal = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
 
   // 2.3 Safety Score
-  const crimeRate = normalize(metrics.crimeCount, 0, 200); // Mocking rate based on count for demo
+  // For a real metric, we use 0-200 crimes per km2 as a scale
+  const crimeDensity = metrics.crimeCount / 3.14; // Approx 1km radius
+  const crimeRate = normalize(crimeDensity, 0, 100); 
   let safetyBase = 100 - crimeRate;
   
   // Trend Score: Down: 100, Flat: 50, Up: 0

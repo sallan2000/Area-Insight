@@ -147,7 +147,7 @@ export default function Report() {
               title="Transport"
               score={scores.transport}
               icon={<Bus className="w-6 h-6" />}
-              description={`${raw.transport?.busStops || 0} bus stops & ${raw.transport?.stations || 0} stations nearby`}
+              description={`${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
               status={getOverallGrade(scores.transport)}
               isActive={activeTab === 'transport'}
               onClick={() => setActiveTab('transport')}
@@ -156,9 +156,9 @@ export default function Report() {
               title="Safety"
               score={scores.safety}
               icon={<Shield className="w-6 h-6" />}
-              description={`${raw.safety?.crimesLastMonth || 0} reported incidents last month`}
+              description={`${raw.crimeCount || 0} reported incidents last month`}
               status={getOverallGrade(scores.safety)}
-              trend="up"
+              trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
               isActive={activeTab === 'safety'}
               onClick={() => setActiveTab('safety')}
             />
@@ -166,7 +166,7 @@ export default function Report() {
               title="Schools"
               score={scores.schools}
               icon={<GraduationCap className="w-6 h-6" />}
-              description={`${raw.schools?.outstanding || 0} Outstanding schools within 1 mile`}
+              description={`${raw.schools?.count || 0} schools nearby`}
               status={getOverallGrade(scores.schools)}
               isActive={activeTab === 'schools'}
               onClick={() => setActiveTab('schools')}
@@ -175,7 +175,7 @@ export default function Report() {
               title="Amenities"
               score={scores.amenities}
               icon={<Store className="w-6 h-6" />}
-              description={`${raw.amenities?.total || 0} shops, parks, and services`}
+              description={`${raw.amenities?.totalCount || 0} shops, parks, and services`}
               status={getOverallGrade(scores.amenities)}
               isActive={activeTab === 'amenities'}
               onClick={() => setActiveTab('amenities')}
@@ -207,10 +207,10 @@ export default function Report() {
                   <div className="p-4 bg-gray-50 rounded-xl">
                     <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
                     <p className="text-xl font-bold text-foreground">
-                      {activeTab === 'safety' ? raw.safety?.crimesLastMonth : 
-                       activeTab === 'transport' ? raw.transport?.stopCount : 
+                      {activeTab === 'safety' ? raw.crimeCount : 
+                       activeTab === 'transport' ? raw.transport?.busStopCount : 
                        activeTab === 'schools' ? raw.schools?.count : 
-                       raw.amenities?.total}
+                       raw.amenities?.totalCount}
                     </p>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-xl">

@@ -160,7 +160,8 @@ function calculateScores(metrics: any) {
   const crimeDensityReduction = normalize(crimeDensity, 0, 100); 
   
   // Base Safety starts at 100
-  let safetyBase = 100 - (crimeDensityReduction * 0.4) - (severityReduction * 0.6);
+  // More aggressive reduction to see variation
+  let safetyBase = 100 - (crimeDensityReduction * 0.5) - (severityReduction * 0.7);
   
   // Clamping and applying trend
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.05 : (metrics.crimeTrend === 'up' ? 0.9 : 1.0);

@@ -53,23 +53,30 @@ async function fetchAreaMetrics(postcode: string) {
   const osmData = osmRes.ok ? await osmRes.json() : { elements: [] };
   const elements = osmData.elements;
 
-  const localAmenities = elements.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop"].includes(e.tags.amenity));
-  const busStopList = elements.filter((e: any) => e.tags?.highway === "bus_stop").map((e: any) => e.tags.name || "Unnamed Bus Stop");
-  const trainStationList = elements.filter((e: any) => e.tags?.railway === "station").map((e: any) => e.tags.name || "Unnamed Station");
-  const schoolList = elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college").map((e: any) => e.tags.name || "Unnamed School");
-  const amenitiesList = localAmenities.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity }));
+  // Deduplicate and filter elements
+  const localAmenitiesElements = elements.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
+  const essentialAmenitiesElements = elements.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));
+  
+  const busStopList = Array.from(new Set(elements.filter((e: any) => e.tags?.highway === "bus_stop").map((e: any) => e.tags.name || "Unnamed Bus Stop")));
+  const trainStationList = Array.from(new Set(elements.filter((e: any) => e.tags?.railway === "station").map((e: any) => e.tags.name || "Unnamed Station")));
+  const schoolList = Array.from(new Set(elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university").map((e: any) => e.tags.name || "Unnamed Educational Facility")));
+  
+  const amenitiesList = [
+    ...localAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity })),
+    ...essentialAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Essential Service", category: e.tags.amenity }))
+  ];
 
   const busStops = busStopList.length;
   const trainStations = trainStationList.length;
   const schoolsCount = schoolList.length;
   
-  const categories = new Set(localAmenities.map((e: any) => e.tags.amenity));
+  const categories = new Set(amenitiesList.map((e: any) => e.category));
   
-  // Distances and Densities (updated for square mile)
-  const trainDistance = trainStations > 0 ? 0.5 : 3.0; // Simplified for now
-  const busStopDensity = busStops / 2.59; // Area of 1 mile radius is ~3.14 sq miles, but let's use 1 sq mile normalization
+  // Distances and Densities
+  const trainDistance = trainStations > 0 ? 0.5 : 3.0; 
+  const busStopDensity = busStops / 0.38; // Normalized to ~1km2 (0.38 sq miles)
   const diversityIndex = categories.size;
-  const amenitiesPerSqMile = localAmenities.length; // Density per square mile area roughly
+  const amenitiesCount = amenitiesList.length; 
 
   // 4. TfL Integration (if London-based)
   let tflData = null;
@@ -105,10 +112,10 @@ async function fetchAreaMetrics(postcode: string) {
       stations: trainStationList
     },
     amenities: {
-      amenitiesPerSqMile,
+      amenitiesCount,
       diversityIndex,
-      totalCount: localAmenities.length,
-      topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4)),
+      totalCount: amenitiesList.length,
+      topRatedPlaces: Math.min(10, Math.floor(amenitiesList.length / 4)),
       list: amenitiesList
     },
     schools: {
@@ -145,32 +152,35 @@ function calculateScores(metrics: any) {
   const transportScoreFinal = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
 
   // 2.3 Safety Score (Bespoke)
-  // Severity normalized (0-100 points = 0 safety)
-  const severityPoints = normalize(metrics.safetySeverity, 0, 100);
+  // Severity normalized (10 weighted severe crimes = 50 reduction, scale is more sensitive)
+  const severityReduction = normalize(metrics.safetySeverity, 0, 50);
+  
+  // Crime Density: Crimes per sq mile (1 mile radius ~3.14 sq miles)
   const crimeDensity = metrics.crimeCount / 3.14; 
-  const crimeRate = normalize(crimeDensity, 0, 150); 
+  const crimeDensityReduction = normalize(crimeDensity, 0, 100); 
   
-  // Bespoke Safety = 50% density, 50% severity
-  let safetyBase = 100 - ((crimeRate * 0.5) + (severityPoints * 0.5));
+  // Base Safety starts at 100
+  let safetyBase = 100 - (crimeDensityReduction * 0.4) - (severityReduction * 0.6);
   
-  const trendScore = metrics.crimeTrend === 'down' ? 100 : (metrics.crimeTrend === 'up' ? 0 : 50);
-  const safetyScoreWeighted = (safetyBase * 0.7) + (trendScore * 0.3);
+  // Clamping and applying trend
+  const trendMultiplier = metrics.crimeTrend === 'down' ? 1.05 : (metrics.crimeTrend === 'up' ? 0.9 : 1.0);
+  const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));
 
   // 2.4 Amenities Score
-  const a1 = normalize(metrics.amenities.amenitiesPerSqMile, 5, 30);
-  const a2 = normalize(metrics.amenities.diversityIndex, 2, 7);
+  const a1 = normalize(metrics.amenities.amenitiesCount, 0, 40);
+  const a2 = normalize(metrics.amenities.diversityIndex, 0, 10);
   const a3 = normalize(metrics.amenities.topRatedPlaces, 0, 10);
-  const amenitiesScoreFinal = (a1 * 0.6 + a2 * 0.2 + a3 * 0.2);
+  const amenitiesScoreFinal = (a1 * 0.5 + a2 * 0.3 + a3 * 0.2);
 
   // 2.5 Schools Score
   const schoolsScoreFinal = (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
 
   // 2.6 Liveability Score
-  const totalScore = (transportScoreFinal * 0.25) + (safetyScoreWeighted * 0.25) + (amenitiesScoreFinal * 0.25) + (schoolsScoreFinal * 0.25);
+  const totalScore = (transportScoreFinal * 0.25) + (safetyScoreFinal * 0.25) + (amenitiesScoreFinal * 0.25) + (schoolsScoreFinal * 0.25);
 
   return {
     transport: Math.round(transportScoreFinal),
-    safety: Math.round(safetyScoreWeighted),
+    safety: Math.round(safetyScoreFinal),
     amenities: Math.round(amenitiesScoreFinal),
     schools: Math.round(schoolsScoreFinal),
     total: Math.round(totalScore)

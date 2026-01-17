@@ -130,19 +130,26 @@ export default function Report() {
             </div>
           </div>
 
-          {/* Map / Location Context (Placeholder for map integration) */}
+          {/* Map Section */}
           <div className="bg-white rounded-2xl p-1 shadow-sm border border-border lg:col-span-2 overflow-hidden relative group">
-            <div className="absolute inset-0 bg-slate-100 flex items-center justify-center">
-              <div className="text-center space-y-2">
-                <MapPin className="w-10 h-10 text-muted-foreground/50 mx-auto" />
-                <p className="text-muted-foreground font-medium">Interactive Map View</p>
-                <p className="text-xs text-muted-foreground/70">
-                  Lat: {report.lat}, Lng: {report.lng}
-                </p>
+            <div className="w-full h-full min-h-[400px]">
+              <iframe
+                width="100%"
+                height="100%"
+                style={{ border: 0, minHeight: '400px' }}
+                loading="lazy"
+                allowFullScreen
+                referrerPolicy="no-referrer-when-downgrade"
+                src={`https://www.google.com/maps/embed/v1/view?key=YOUR_API_KEY&center=${report.lat},${report.lng}&zoom=15&maptype=roadmap`}
+              ></iframe>
+              {/* Note: In a real app, you would use a proper Google Maps library and API key. 
+                  This is a placeholder using the embed API. Since I cannot set secrets, 
+                  I am using a standard view. For a full implementation, the user would provide an API key. */}
+              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-primary" />
+                <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
               </div>
             </div>
-            {/* If you had a map component, it would go here */}
-            <div className="w-full h-full min-h-[300px] bg-gradient-to-br from-gray-50 to-gray-100/50" />
           </div>
         </section>
 

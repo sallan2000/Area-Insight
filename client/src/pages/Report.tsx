@@ -225,6 +225,50 @@ export default function Report() {
                     <p className="text-xl font-bold text-foreground">Top 15%</p>
                   </div>
                 </div>
+
+                <div className="mt-6">
+                  <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide mb-3">Nearby Highlights</h4>
+                  <div className="bg-gray-50 rounded-xl p-4 max-h-[200px] overflow-y-auto">
+                    <ul className="space-y-2">
+                      {activeTab === 'transport' && (
+                        <>
+                          {raw.transport?.stations?.map((s: string, i: number) => (
+                            <li key={i} className="text-sm flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                              <span className="font-medium">Station:</span> {s}
+                            </li>
+                          ))}
+                          {raw.transport?.busStops?.map((s: string, i: number) => (
+                            <li key={i} className="text-sm flex items-center gap-2 text-muted-foreground">
+                              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                              <span className="font-medium">Bus Stop:</span> {s}
+                            </li>
+                          ))}
+                        </>
+                      )}
+                      {activeTab === 'schools' && raw.schools?.list?.map((s: string, i: number) => (
+                        <li key={i} className="text-sm flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                          {s}
+                        </li>
+                      ))}
+                      {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
+                        <li key={i} className="text-sm flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                          <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
+                        </li>
+                      ))}
+                      {activeTab === 'safety' && (
+                        <li className="text-sm italic text-muted-foreground">
+                          Due to privacy, specific crime locations are restricted to street-level anonymized data.
+                        </li>
+                      )}
+                      {(!raw[activeTab]?.list && !raw[activeTab]?.stations && !raw[activeTab]?.busStops && activeTab !== 'safety') && (
+                        <li className="text-sm text-muted-foreground">No specific names found in the immediate vicinity.</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -53,10 +53,15 @@ async function fetchAreaMetrics(postcode: string) {
   const osmData = osmRes.ok ? await osmRes.json() : { elements: [] };
   const elements = osmData.elements;
 
-  const busStops = elements.filter((e: any) => e.tags?.highway === "bus_stop").length;
-  const trainStations = elements.filter((e: any) => e.tags?.railway === "station").length;
-  const schoolsCount = elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college").length;
   const localAmenities = elements.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop"].includes(e.tags.amenity));
+  const busStopList = elements.filter((e: any) => e.tags?.highway === "bus_stop").map((e: any) => e.tags.name || "Unnamed Bus Stop");
+  const trainStationList = elements.filter((e: any) => e.tags?.railway === "station").map((e: any) => e.tags.name || "Unnamed Station");
+  const schoolList = elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college").map((e: any) => e.tags.name || "Unnamed School");
+  const amenitiesList = localAmenities.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity }));
+
+  const busStops = busStopList.length;
+  const trainStations = trainStationList.length;
+  const schoolsCount = schoolList.length;
   
   const categories = new Set(localAmenities.map((e: any) => e.tags.amenity));
   
@@ -91,18 +96,22 @@ async function fetchAreaMetrics(postcode: string) {
         busStopCount: busStops,
         stationCount: trainStations,
         commuteCityCenter,
-        commuteMajorHub
+        commuteMajorHub,
+        busStops: busStopList,
+        stations: trainStationList
       },
       amenities: {
         amenitiesPerKm2: amenitiesPerSqMile, // Renaming internally or keeping key for compat
         diversityIndex,
         totalCount: localAmenities.length,
-        topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4))
+        topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4)),
+        list: amenitiesList
       },
       schools: {
         primaryRating: 80, // Baseline Good
         secondaryRating: 80,
-        count: schoolsCount
+        count: schoolsCount,
+        list: schoolList
       }
     }
   };

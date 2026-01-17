@@ -33,9 +33,14 @@ export default function Home() {
           </div>
           <span className="font-display font-bold text-xl tracking-tight">ScoreMyStreet</span>
         </div>
-        <a href="#about" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-          How it works
-        </a>
+        <div className="flex items-center gap-4">
+          <a href="/compare" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Compare Areas
+          </a>
+          <a href="#about" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            How it works
+          </a>
+        </div>
       </nav>
 
       {/* Hero Section */}

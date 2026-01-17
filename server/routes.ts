@@ -18,8 +18,8 @@ async function fetchAreaMetrics(postcode: string) {
 
   // 2. Fetch Crime Data (Real-time from UK Police API)
   const crimeRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`);
-  const crimes = crimeRes.ok ? await crimeRes.json() : [];
-  const crimeCount = crimes.length;
+  const crimesData = crimeRes.ok ? await crimeRes.json() : [];
+  const crimeCount = crimesData.length;
   
   // Real crime trend (last month vs month before)
   const today = new Date();
@@ -30,7 +30,7 @@ async function fetchAreaMetrics(postcode: string) {
 
   const crimeHistRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${monthBeforeStr}`);
   const histCrimes = crimeHistRes.ok ? await crimeHistRes.json() : [];
-  const crimeTrend = crimes.length < histCrimes.length ? "down" : (crimes.length > histCrimes.length ? "up" : "stable");
+  const crimeTrend = crimesData.length < histCrimes.length ? "down" : (crimesData.length > histCrimes.length ? "up" : "stable");
 
   // 3. Amenities & Schools from OpenStreetMap (Overpass API)
   const overpassUrl = "https://overpass-api.de/api/interpreter";
@@ -39,8 +39,8 @@ async function fetchAreaMetrics(postcode: string) {
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:1609,${lat},${lng});
       node["amenity"~"school|college|university"](around:1609,${lat},${lng});
-      node["highway"="bus_stop"](around:1609,${lat},${lng});
-      node["railway"="station"](around:1609,${lat},${lng});
+      node["highway"="bus_stop"](around:1000,${lat},${lng});
+      node["railway"="station"](around:1000,${lat},${lng});
     );
     out body;
   `;
@@ -82,38 +82,49 @@ async function fetchAreaMetrics(postcode: string) {
   const commuteCityCenter = tflData ? 25 : 45; 
   const commuteMajorHub = tflData ? 15 : 30;
 
+  // 5. Bespoke Safety Analysis
+  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery').length;
+  const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person').length;
+  const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour').length;
+  
+  // Severity Index: Weighted severe crimes vs total
+  const severityScore = (violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1);
+
+  const resultMetrics = {
+    crimeCount,
+    crimeTrend,
+    safetySeverity: severityScore,
+    transport: {
+      trainDistance,
+      busStopDensity,
+      busStopCount: busStops,
+      stationCount: trainStations,
+      commuteCityCenter,
+      commuteMajorHub,
+      busStops: busStopList,
+      stations: trainStationList
+    },
+    amenities: {
+      amenitiesPerSqMile,
+      diversityIndex,
+      totalCount: localAmenities.length,
+      topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4)),
+      list: amenitiesList
+    },
+    schools: {
+      primaryRating: 80,
+      secondaryRating: 80,
+      count: schoolsCount,
+      list: schoolList
+    }
+  };
+
   return {
     lat: String(lat),
     lng: String(lng),
     street,
     city,
-    metrics: {
-      crimeCount,
-      crimeTrend,
-      transport: {
-        trainDistance,
-        busStopDensity,
-        busStopCount: busStops,
-        stationCount: trainStations,
-        commuteCityCenter,
-        commuteMajorHub,
-        busStops: busStopList,
-        stations: trainStationList
-      },
-      amenities: {
-        amenitiesPerKm2: amenitiesPerSqMile, // Renaming internally or keeping key for compat
-        diversityIndex,
-        totalCount: localAmenities.length,
-        topRatedPlaces: Math.min(10, Math.floor(localAmenities.length / 4)),
-        list: amenitiesList
-      },
-      schools: {
-        primaryRating: 80, // Baseline Good
-        secondaryRating: 80,
-        count: schoolsCount,
-        list: schoolList
-      }
-    }
+    metrics: resultMetrics
   };
 }
 
@@ -126,30 +137,27 @@ function calculateScores(metrics: any) {
   };
 
   // 2.2 Transport Score
-  // Train distance (lower is better, range 0-5km)
   const t1 = 100 - normalize(metrics.transport.trainDistance, 0, 5);
-  // Bus density (higher is better, range 0-30 per sq mile)
   const t2 = normalize(metrics.transport.busStopDensity, 0, 30);
-  // Commute city (lower is better, range 20-60)
   const t3 = 100 - normalize(metrics.transport.commuteCityCenter, 20, 60);
-  // Commute hub (lower is better, range 15-45)
   const t4 = 100 - normalize(metrics.transport.commuteMajorHub, 15, 45);
   
   const transportScoreFinal = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
 
-  // 2.3 Safety Score
-  // For a real metric, we use crimes per sq mile. 
-  // 1 mile radius area is approx 3.14 sq miles.
+  // 2.3 Safety Score (Bespoke)
+  // Severity normalized (0-100 points = 0 safety)
+  const severityPoints = normalize(metrics.safetySeverity, 0, 100);
   const crimeDensity = metrics.crimeCount / 3.14; 
   const crimeRate = normalize(crimeDensity, 0, 150); 
-  let safetyBase = 100 - crimeRate;
   
-  // Trend Score: Down: 100, Flat: 50, Up: 0
+  // Bespoke Safety = 50% density, 50% severity
+  let safetyBase = 100 - ((crimeRate * 0.5) + (severityPoints * 0.5));
+  
   const trendScore = metrics.crimeTrend === 'down' ? 100 : (metrics.crimeTrend === 'up' ? 0 : 50);
   const safetyScoreWeighted = (safetyBase * 0.7) + (trendScore * 0.3);
 
   // 2.4 Amenities Score
-  const a1 = normalize(metrics.amenities.amenitiesPerKm2, 5, 30);
+  const a1 = normalize(metrics.amenities.amenitiesPerSqMile, 5, 30);
   const a2 = normalize(metrics.amenities.diversityIndex, 2, 7);
   const a3 = normalize(metrics.amenities.topRatedPlaces, 0, 10);
   const amenitiesScoreFinal = (a1 * 0.6 + a2 * 0.2 + a3 * 0.2);

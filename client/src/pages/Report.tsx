@@ -140,7 +140,7 @@ export default function Report() {
                 loading="lazy"
                 allowFullScreen
                 referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.google.com/maps/embed/v1/view?key=YOUR_API_KEY&center=${report.lat},${report.lng}&zoom=15&maptype=roadmap`}
+                src={`https://www.google.com/maps/embed/v1/view?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&center=${report.lat},${report.lng}&zoom=15&maptype=roadmap`}
               ></iframe>
               {/* Note: In a real app, you would use a proper Google Maps library and API key. 
                   This is a placeholder using the embed API. Since I cannot set secrets, 

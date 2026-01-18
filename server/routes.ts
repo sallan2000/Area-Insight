@@ -51,7 +51,7 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
 
   const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop" || e.tags?.highway === "platform"), 5);
   const trainStationList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.railway === "station" || e.tags?.railway === "halt"), 5);
-  const schoolList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university"), 5);
+  const schoolList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university" || e.tags?.amenity === "kindergarten"), 5);
   
   const amenitiesList = [
     ...localAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 })),
@@ -154,7 +154,8 @@ async function fetchAreaMetrics(postcode: string) {
     [out:json][timeout:30];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
-      node["amenity"~"school|college|university"](around:5000,${lat},${lng});
+      node["amenity"~"school|college|university|kindergarten"](around:5000,${lat},${lng});
+      way["amenity"~"school|college|university|kindergarten"](around:5000,${lat},${lng});
       node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
       node["railway"~"station|halt"](around:5000,${lat},${lng});
       way["railway"~"station|halt"](around:5000,${lat},${lng});

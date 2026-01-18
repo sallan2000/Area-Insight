@@ -38,23 +38,29 @@ async function fetchAreaMetrics(postcode: string) {
     [out:json][timeout:25];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
-      way["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"~"school|college|university"](around:5000,${lat},${lng});
-      way["amenity"~"school|college|university"](around:5000,${lat},${lng});
       node["highway"="bus_stop"](around:2000,${lat},${lng});
       node["railway"="station"](around:5000,${lat},${lng});
-      way["railway"="station"](around:5000,${lat},${lng});
     );
-    out center;
+    out body center;
   `;
   
   const osmRes = await fetch(overpassUrl, {
     method: "POST",
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
+    },
     body: `data=${encodeURIComponent(query)}`
   });
   
+  if (!osmRes.ok) {
+    const errorText = await osmRes.text();
+    console.error(`Overpass API Error: ${osmRes.status} ${osmRes.statusText}`, errorText);
+  }
+  
   const osmData = osmRes.ok ? await osmRes.json() : { elements: [] };
-  const elements = osmData.elements;
+  const elements = osmData.elements || [];
 
   // Helper function to calculate distance between two points in km
   function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -195,19 +201,16 @@ function calculateScores(metrics: any) {
   const transportScoreFinal = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
 
   // 2.3 Safety Score (Bespoke)
-  // Severity normalized (10 weighted severe crimes = 50 reduction, scale is more sensitive)
-  const severityReduction = normalize(metrics.safetySeverity, 0, 50);
-  
-  // Crime Density: Crimes per sq mile (1 mile radius ~3.14 sq miles)
-  const crimeDensity = metrics.crimeCount / 3.14; 
-  const crimeDensityReduction = normalize(crimeDensity, 0, 100); 
-  
   // Base Safety starts at 100
   // More aggressive reduction to see variation
-  let safetyBase = 100 - (crimeDensityReduction * 0.5) - (severityReduction * 0.7);
+  const severityPoints = normalize(metrics.safetySeverity, 0, 30); // Lowered max for more sensitivity
+  const crimeDensity = metrics.crimeCount / 3.14; 
+  const crimeDensityPoints = normalize(crimeDensity, 0, 50); // Lowered max for more sensitivity
+  
+  let safetyBase = 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.7);
   
   // Clamping and applying trend
-  const trendMultiplier = metrics.crimeTrend === 'down' ? 1.05 : (metrics.crimeTrend === 'up' ? 0.9 : 1.0);
+  const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));
 
   // 2.4 Amenities Score

@@ -140,11 +140,8 @@ export default function Report() {
                 loading="lazy"
                 allowFullScreen
                 referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.google.com/maps/embed/v1/view?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&center=${report.lat},${report.lng}&zoom=15&maptype=roadmap`}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.01}%2C${Number(report.lat)-0.01}%2C${Number(report.lng)+0.01}%2C${Number(report.lat)+0.01}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
               ></iframe>
-              {/* Note: In a real app, you would use a proper Google Maps library and API key. 
-                  This is a placeholder using the embed API. Since I cannot set secrets, 
-                  I am using a standard view. For a full implementation, the user would provide an API key. */}
               <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-primary" />
                 <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>

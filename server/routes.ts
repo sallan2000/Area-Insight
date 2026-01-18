@@ -37,12 +37,15 @@ async function fetchAreaMetrics(postcode: string) {
   const query = `
     [out:json][timeout:25];
     (
-      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:1609,${lat},${lng});
-      node["amenity"~"school|college|university"](around:1609,${lat},${lng});
-      node["highway"="bus_stop"](around:1000,${lat},${lng});
-      node["railway"="station"](around:1000,${lat},${lng});
+      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
+      way["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
+      node["amenity"~"school|college|university"](around:5000,${lat},${lng});
+      way["amenity"~"school|college|university"](around:5000,${lat},${lng});
+      node["highway"="bus_stop"](around:2000,${lat},${lng});
+      node["railway"="station"](around:5000,${lat},${lng});
+      way["railway"="station"](around:5000,${lat},${lng});
     );
-    out body;
+    out center;
   `;
   
   const osmRes = await fetch(overpassUrl, {
@@ -67,10 +70,16 @@ async function fetchAreaMetrics(postcode: string) {
   }
 
   // Deduplicate and filter elements with distance
-  const elementsWithDistance = elements.map((e: any) => ({
-    ...e,
-    distance: getDistance(lat, lng, e.lat, e.lon)
-  })).sort((a: any, b: any) => a.distance - b.distance);
+  const elementsWithDistance = elements.map((e: any) => {
+    const elLat = e.lat || e.center?.lat;
+    const elLon = e.lon || e.center?.lon;
+    return {
+      ...e,
+      lat: elLat,
+      lon: elLon,
+      distance: (elLat && elLon) ? getDistance(lat, lng, elLat, elLon) : 999
+    };
+  }).sort((a: any, b: any) => a.distance - b.distance);
 
   const localAmenitiesElements = elementsWithDistance.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
   const essentialAmenitiesElements = elementsWithDistance.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));

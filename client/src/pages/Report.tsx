@@ -239,30 +239,42 @@ export default function Report() {
                     <ul className="space-y-2">
                       {activeTab === 'transport' && (
                         <>
-                          {raw.transport?.stations?.map((s: string, i: number) => (
-                            <li key={i} className="text-sm flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                              <span className="font-medium">Station:</span> {s}
+                          {raw.transport?.stations?.map((s: any, i: number) => (
+                            <li key={i} className="text-sm flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                <span className="font-medium">Station:</span> {s.name || s}
+                              </div>
+                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
                             </li>
                           ))}
-                          {raw.transport?.busStops?.map((s: string, i: number) => (
-                            <li key={i} className="text-sm flex items-center gap-2 text-muted-foreground">
-                              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                              <span className="font-medium">Bus Stop:</span> {s}
+                          {raw.transport?.busStops?.map((s: any, i: number) => (
+                            <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                                <span className="font-medium">Bus Stop:</span> {s.name || s}
+                              </div>
+                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
                             </li>
                           ))}
                         </>
                       )}
-                      {activeTab === 'schools' && raw.schools?.list?.map((s: string, i: number) => (
-                        <li key={i} className="text-sm flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          {s}
+                      {activeTab === 'schools' && raw.schools?.list?.map((s: any, i: number) => (
+                        <li key={i} className="text-sm flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            {s.name || s}
+                          </div>
+                          {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
                         </li>
                       ))}
                       {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
-                        <li key={i} className="text-sm flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
+                        <li key={i} className="text-sm flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
+                          </div>
+                          {a.distance !== undefined && <span className="text-xs text-muted-foreground">{a.distance}km</span>}
                         </li>
                       ))}
                       {activeTab === 'safety' && (

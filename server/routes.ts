@@ -53,18 +53,52 @@ async function fetchAreaMetrics(postcode: string) {
   const osmData = osmRes.ok ? await osmRes.json() : { elements: [] };
   const elements = osmData.elements;
 
-  // Deduplicate and filter elements
-  const localAmenitiesElements = elements.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
-  const essentialAmenitiesElements = elements.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));
+  // Helper function to calculate distance between two points in km
+  function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  // Deduplicate and filter elements with distance
+  const elementsWithDistance = elements.map((e: any) => ({
+    ...e,
+    distance: getDistance(lat, lng, e.lat, e.lon)
+  })).sort((a: any, b: any) => a.distance - b.distance);
+
+  const localAmenitiesElements = elementsWithDistance.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
+  const essentialAmenitiesElements = elementsWithDistance.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));
   
-  const busStopList = Array.from(new Set(elements.filter((e: any) => e.tags?.highway === "bus_stop").map((e: any) => e.tags.name || "Unnamed Bus Stop")));
-  const trainStationList = Array.from(new Set(elements.filter((e: any) => e.tags?.railway === "station").map((e: any) => e.tags.name || "Unnamed Station")));
-  const schoolList = Array.from(new Set(elements.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university").map((e: any) => e.tags.name || "Unnamed Educational Facility")));
+  // Get nearest facilities
+  const getNearest = (list: any[], limit: number) => {
+    const unique = new Map();
+    for (const item of list) {
+      const name = item.tags.name || "Unnamed";
+      if (!unique.has(name)) {
+        unique.set(name, item);
+      }
+      if (unique.size >= limit) break;
+    }
+    return Array.from(unique.values()).map(item => ({
+      name: item.tags.name || "Unnamed",
+      distance: Math.round(item.distance * 10) / 10
+    }));
+  };
+
+  const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop"), 5);
+  const trainStationList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.railway === "station"), 5);
+  const schoolList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university"), 5);
   
   const amenitiesList = [
-    ...localAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity })),
-    ...essentialAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Essential Service", category: e.tags.amenity }))
-  ];
+    ...localAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 })),
+    ...essentialAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Essential Service", category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 }))
+  ].sort((a, b) => a.distance - b.distance);
 
   const busStops = busStopList.length;
   const trainStations = trainStationList.length;
@@ -73,8 +107,8 @@ async function fetchAreaMetrics(postcode: string) {
   const categories = new Set(amenitiesList.map((e: any) => e.category));
   
   // Distances and Densities
-  const trainDistance = trainStations > 0 ? 0.5 : 3.0; 
-  const busStopDensity = busStops / 0.38; // Normalized to ~1km2 (0.38 sq miles)
+  const minTrainDist = trainStationList.length > 0 ? trainStationList[0].distance : 3.0;
+  const busStopDensity = busStops / 0.38; 
   const diversityIndex = categories.size;
   const amenitiesCount = amenitiesList.length; 
 
@@ -102,7 +136,7 @@ async function fetchAreaMetrics(postcode: string) {
     crimeTrend,
     safetySeverity: severityScore,
     transport: {
-      trainDistance,
+      trainDistance: minTrainDist,
       busStopDensity,
       busStopCount: busStops,
       stationCount: trainStations,
@@ -144,7 +178,7 @@ function calculateScores(metrics: any) {
   };
 
   // 2.2 Transport Score
-  const t1 = 100 - normalize(metrics.transport.trainDistance, 0, 5);
+  const t1 = 100 - normalize(metrics.transport.trainDistance || 3, 0, 5);
   const t2 = normalize(metrics.transport.busStopDensity, 0, 30);
   const t3 = 100 - normalize(metrics.transport.commuteCityCenter, 20, 60);
   const t4 = 100 - normalize(metrics.transport.commuteMajorHub, 15, 45);

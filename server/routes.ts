@@ -78,6 +78,13 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     crimeCount,
     crimeTrend,
     safetySeverity: severityScore,
+    safetyBreakdown: {
+      violent: violentCrimes,
+      theft: burglaryCrimes,
+      asb: asbCrimes,
+      vehicle: vehicleCrimes,
+      drugs: drugCrimes
+    },
     transport: {
       trainDistance: minTrainDist,
       busStopDensity,
@@ -141,12 +148,14 @@ async function fetchAreaMetrics(postcode: string) {
   const crimeTrend = crimesData.length < histCrimes.length ? "down" : (crimesData.length > histCrimes.length ? "up" : "stable");
 
   // 5. Bespoke Safety Analysis
-  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery').length;
-  const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person').length;
-  const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour').length;
+  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery' || c.category === 'possession-of-weapons').length;
+  const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person' || c.category === 'shoplifting').length;
+  const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour' || c.category === 'public-order').length;
+  const vehicleCrimes = crimesData.filter((c: any) => c.category === 'vehicle-crime').length;
+  const drugCrimes = crimesData.filter((c: any) => c.category === 'drugs').length;
   
   // Severity Index: Weighted severe crimes vs total
-  const severityScore = (violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1);
+  const severityScore = (violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1) + (vehicleCrimes * 2) + (drugCrimes * 2);
 
   // 3. Amenities & Schools from OpenStreetMap (Overpass API)
   const overpassUrl = "https://www.overpass-api.de/api/interpreter";
@@ -159,6 +168,7 @@ async function fetchAreaMetrics(postcode: string) {
       node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
       node["railway"~"station|halt"](around:5000,${lat},${lng});
       way["railway"~"station|halt"](around:5000,${lat},${lng});
+      relation["boundary"="postal_code"]["postal_code"~"${postcode.split(' ')[0]}"](around:1000,${lat},${lng});
     );
     out body center;
   `;

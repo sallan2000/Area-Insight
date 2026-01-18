@@ -140,7 +140,7 @@ export default function Report() {
                 loading="lazy"
                 allowFullScreen
                 referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.01}%2C${Number(report.lat)-0.01}%2C${Number(report.lng)+0.01}%2C${Number(report.lat)+0.01}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.01}%2C${Number(report.lat)-0.01}%2C${Number(report.lng)+0.01}%2C${Number(report.lat)+0.01}&layer=mapnik&marker=${report.lat}%2C${report.lng}&q=${report.postcode}`}
               ></iframe>
               <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-primary" />
@@ -214,26 +214,46 @@ export default function Report() {
               
               <div className="space-y-4">
                 <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div className="p-4 bg-gray-50 rounded-xl">
                     <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
                     <p className="text-xl font-bold text-foreground">
-                      {activeTab === 'safety' ? raw.crimeCount : 
-                       activeTab === 'transport' ? raw.transport?.busStopCount : 
-                       activeTab === 'schools' ? raw.schools?.count : 
-                       raw.amenities?.totalCount}
+                      {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
+                       activeTab === 'transport' ? `${raw.transport?.busStopCount + raw.transport?.stationCount} stops/stations` : 
+                       activeTab === 'schools' ? `${raw.schools?.count} educational facilities` : 
+                       `${raw.amenities?.totalCount} local services`}
                     </p>
-                  </div>
-                  <div className="p-4 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-muted-foreground mb-1">Percentile</p>
-                    <p className="text-xl font-bold text-foreground">Top 15%</p>
                   </div>
                 </div>
 
                 <div className="mt-6">
                   <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide mb-3">Nearby Highlights</h4>
-                  <div className="bg-gray-50 rounded-xl p-4 max-h-[200px] overflow-y-auto">
+                  <div className="bg-gray-50 rounded-xl p-4 max-h-[300px] overflow-y-auto">
                     <ul className="space-y-2">
+                      {activeTab === 'safety' && raw.safetyBreakdown && (
+                        <div className="space-y-3">
+                          {[
+                            { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
+                            { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
+                            { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
+                            { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
+                            { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
+                          ].map((item) => (
+                            <div key={item.label} className="space-y-1">
+                              <div className="flex justify-between text-xs font-medium">
+                                <span>{item.label}</span>
+                                <span>{item.value}</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div 
+                                  className={`${item.color} h-1.5 rounded-full`} 
+                                  style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {activeTab === 'transport' && (
                         <>
                           {raw.transport?.stations?.map((s: any, i: number) => (
@@ -288,26 +308,11 @@ export default function Report() {
               </div>
             </div>
 
-            <div className="h-[300px] w-full">
-              <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide mb-4">
-                {activeTab === 'safety' ? 'Crime Trend (6 Months)' : 'Comparative Score Analysis'}
-              </h4>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} stroke="#888" />
-                  <YAxis axisLine={false} tickLine={false} fontSize={12} stroke="#888" />
-                  <Tooltip 
-                    cursor={{ fill: 'transparent' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                    {trendData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === trendData.length - 1 ? 'hsl(var(--primary))' : '#e2e8f0'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="h-[300px] w-full bg-slate-50 rounded-xl flex items-center justify-center p-8 text-center">
+              <div className="space-y-2">
+                <p className="font-semibold text-foreground">Detailed Category Insights</p>
+                <p className="text-sm text-muted-foreground">Selecting a metric on the left will reveal specific data points and local availability for that category.</p>
+              </div>
             </div>
           </div>
         </section>

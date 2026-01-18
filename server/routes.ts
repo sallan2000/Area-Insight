@@ -4,77 +4,20 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
-// Helper function to fetch external data
-async function fetchAreaMetrics(postcode: string) {
-  // 1. Geocode Postcode
-  const geoRes = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
-  if (!geoRes.ok) throw new Error("Invalid postcode");
-  const geoData = await geoRes.json();
-  
-  const lat = geoData.result.latitude;
-  const lng = geoData.result.longitude;
-  const street = geoData.result.parish || geoData.result.admin_ward || "";
-  const city = geoData.result.admin_district || geoData.result.parish || "";
+// Helper function to calculate distance between two points in km
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
-  // 2. Fetch Crime Data (Real-time from UK Police API)
-  const crimeRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`);
-  const crimesData = crimeRes.ok ? await crimeRes.json() : [];
-  const crimeCount = crimesData.length;
-  
-  // Real crime trend (last month vs month before)
-  const today = new Date();
-  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const monthBefore = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-  const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
-  const monthBeforeStr = `${monthBefore.getFullYear()}-${String(monthBefore.getMonth() + 1).padStart(2, '0')}`;
-
-  const crimeHistRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${monthBeforeStr}`);
-  const histCrimes = crimeHistRes.ok ? await crimeHistRes.json() : [];
-  const crimeTrend = crimesData.length < histCrimes.length ? "down" : (crimesData.length > histCrimes.length ? "up" : "stable");
-
-  // 3. Amenities & Schools from OpenStreetMap (Overpass API)
-  const overpassUrl = "https://overpass-api.de/api/interpreter";
-  const query = `
-    [out:json][timeout:25];
-    (
-      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
-      node["amenity"~"school|college|university"](around:5000,${lat},${lng});
-      node["highway"="bus_stop"](around:2000,${lat},${lng});
-      node["railway"="station"](around:5000,${lat},${lng});
-    );
-    out body center;
-  `;
-  
-  const osmRes = await fetch(overpassUrl, {
-    method: "POST",
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
-    },
-    body: `data=${encodeURIComponent(query)}`
-  });
-  
-  if (!osmRes.ok) {
-    const errorText = await osmRes.text();
-    console.error(`Overpass API Error: ${osmRes.status} ${osmRes.statusText}`, errorText);
-  }
-  
-  const osmData = osmRes.ok ? await osmRes.json() : { elements: [] };
-  const elements = osmData.elements || [];
-
-  // Helper function to calculate distance between two points in km
-  function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371; // Radius of the earth in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
+function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string) {
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -106,8 +49,8 @@ async function fetchAreaMetrics(postcode: string) {
     }));
   };
 
-  const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop"), 5);
-  const trainStationList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.railway === "station"), 5);
+  const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop" || e.tags?.highway === "platform"), 5);
+  const trainStationList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.railway === "station" || e.tags?.railway === "halt"), 5);
   const schoolList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university"), 5);
   
   const amenitiesList = [
@@ -127,24 +70,9 @@ async function fetchAreaMetrics(postcode: string) {
   const diversityIndex = categories.size;
   const amenitiesCount = amenitiesList.length; 
 
-  // 4. TfL Integration (if London-based)
-  let tflData = null;
-  if (geoData.result.region === "London") {
-    const tflRes = await fetch(`https://api.tfl.gov.uk/StopPoint?lat=${lat}&lon=${lng}&stopTypes=NaptanMetroStation,NaptanRailStation&radius=1609`);
-    tflData = tflRes.ok ? await tflRes.json() : null;
-  }
-
   // Calculate commute (simplified fallback)
-  const commuteCityCenter = tflData ? 25 : 45; 
-  const commuteMajorHub = tflData ? 15 : 30;
-
-  // 5. Bespoke Safety Analysis
-  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery').length;
-  const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person').length;
-  const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour').length;
-  
-  // Severity Index: Weighted severe crimes vs total
-  const severityScore = (violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1);
+  const commuteCityCenter = 45; 
+  const commuteMajorHub = 30;
 
   const resultMetrics = {
     crimeCount,
@@ -182,6 +110,95 @@ async function fetchAreaMetrics(postcode: string) {
     city,
     metrics: resultMetrics
   };
+}
+
+// Helper function to fetch external data
+async function fetchAreaMetrics(postcode: string) {
+  // 1. Geocode Postcode
+  const geoRes = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
+  if (!geoRes.ok) throw new Error("Invalid postcode");
+  const geoData = await geoRes.json();
+  
+  const lat = geoData.result.latitude;
+  const lng = geoData.result.longitude;
+  const street = geoData.result.parish || geoData.result.admin_ward || "";
+  const city = geoData.result.admin_district || geoData.result.parish || "";
+
+  // 2. Fetch Crime Data (Real-time from UK Police API)
+  const crimeRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`);
+  const crimesData = crimeRes.ok ? await crimeRes.json() : [];
+  const crimeCount = crimesData.length;
+  
+  // Real crime trend (last month vs month before)
+  const today = new Date();
+  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const monthBefore = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+  const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+  const monthBeforeStr = `${monthBefore.getFullYear()}-${String(monthBefore.getMonth() + 1).padStart(2, '0')}`;
+
+  const crimeHistRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${monthBeforeStr}`);
+  const histCrimes = crimeHistRes.ok ? await crimeHistRes.json() : [];
+  const crimeTrend = crimesData.length < histCrimes.length ? "down" : (crimesData.length > histCrimes.length ? "up" : "stable");
+
+  // 5. Bespoke Safety Analysis
+  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery').length;
+  const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person').length;
+  const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour').length;
+  
+  // Severity Index: Weighted severe crimes vs total
+  const severityScore = (violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1);
+
+  // 3. Amenities & Schools from OpenStreetMap (Overpass API)
+  const overpassUrl = "https://www.overpass-api.de/api/interpreter";
+  const query = `
+    [out:json][timeout:30];
+    (
+      node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
+      node["amenity"~"school|college|university"](around:5000,${lat},${lng});
+      node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
+      node["railway"~"station|halt"](around:5000,${lat},${lng});
+      way["railway"~"station|halt"](around:5000,${lat},${lng});
+    );
+    out body center;
+  `;
+  
+  const osmRes = await fetch(overpassUrl, {
+    method: "POST",
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
+    },
+    body: `data=${encodeURIComponent(query)}`
+  });
+  
+  let elements = [];
+  if (osmRes.ok) {
+    const osmData = await osmRes.json();
+    elements = osmData.elements || [];
+  } else {
+    const errorText = await osmRes.text();
+    console.error(`Overpass API Error: ${osmRes.status} ${osmRes.statusText}`, errorText);
+    // Fallback to alternate server
+    const fallbackUrl = "https://overpass.kumi.systems/api/interpreter";
+    try {
+      const fallbackRes = await fetch(fallbackUrl, {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'ScoreMyStreet/1.0'
+        },
+        body: `data=${encodeURIComponent(query)}`
+      });
+      if (fallbackRes.ok) {
+        const fallbackData = await fallbackRes.json();
+        elements = fallbackData.elements || [];
+      }
+    } catch (e) {
+      console.error("Fallback Overpass failed", e);
+    }
+  }
+  
+  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city);
 }
 
 // Scoring Logic

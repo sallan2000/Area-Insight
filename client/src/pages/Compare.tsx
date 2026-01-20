@@ -195,7 +195,7 @@ export default function Compare() {
           <div className="text-center py-20 space-y-4 opacity-50">
             <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground" />
             <h3 className="text-xl font-medium">Enter two postcodes to compare them side-by-side</h3>
-            <p>We'll analyze crime, transport, schools and more for both areas.</p>
+            <p>We'll analyse crime (12 months within 1km), transport, schools and more for both areas.</p>
           </div>
         )}
       </main>

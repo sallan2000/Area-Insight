@@ -144,6 +144,10 @@ async function fetchAreaMetrics(postcode: string) {
     fetchPromises.push(
       fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`)
         .then(res => res.ok ? res.json() : [])
+        .then(data => data.map((c: any) => ({
+          ...c,
+          distance: getDistance(lat, lng, parseFloat(c.location.latitude), parseFloat(c.location.longitude))
+        })).filter((c: any) => c.distance <= 1.0))
         .catch(() => [])
     );
   }

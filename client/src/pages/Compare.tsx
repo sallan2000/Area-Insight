@@ -15,43 +15,52 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useCreateAssessment } from "@/hooks/use-assess";
+import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function Compare() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [pc1, setPc1] = useState("");
   const [pc2, setPc2] = useState("");
   const [ids, setIds] = useState<{id1?: number, id2?: number}>({});
+  const [isCreating, setIsCreating] = useState(false);
 
-  const { data: report1 } = useAssessment(ids.id1!);
-  const { data: report2 } = useAssessment(ids.id2!);
-
-  const { mutate: create, isPending: creating } = useCreateAssessment();
+  const { data: report1, isLoading: loading1 } = useAssessment(ids.id1!);
+  const { data: report2, isLoading: loading2 } = useAssessment(ids.id2!);
 
   const handleCompare = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pc1.trim() || !pc2.trim()) return;
 
+    setIds({});
+    setIsCreating(true);
+
     try {
-      // We need to create/get both
       const [res1, res2] = await Promise.all([
         apiRequest("POST", "/api/assess", { postcode: pc1.trim() }),
         apiRequest("POST", "/api/assess", { postcode: pc2.trim() })
       ]);
-
-      if (!res1.ok || !res2.ok) {
-        throw new Error("Failed to fetch one or both postcodes");
-      }
 
       const [data1, data2] = await Promise.all([
         res1.json(),
         res2.json()
       ]);
 
+      if (!res1.ok || !res2.ok) {
+        throw new Error(data1.message || data2.message || "Failed to fetch one or both postcodes");
+      }
+
       setIds({ id1: data1.id, id2: data2.id });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Comparison error:", error);
+      toast({
+        title: "Comparison failed",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -106,8 +115,8 @@ export default function Compare() {
                 />
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={creating}>
-              {creating ? <Loader2 className="animate-spin mr-2" /> : <TrendingUp className="mr-2 h-4 w-4" />}
+            <Button type="submit" className="w-full" disabled={isCreating}>
+              {isCreating ? <Loader2 className="animate-spin mr-2" /> : <TrendingUp className="mr-2 h-4 w-4" />}
               Compare Areas
             </Button>
           </form>
@@ -182,7 +191,7 @@ export default function Compare() {
           </div>
         )}
 
-        {!report1 && !report2 && !creating && (
+        {!report1 && !report2 && !isCreating && (
           <div className="text-center py-20 space-y-4 opacity-50">
             <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground" />
             <h3 className="text-xl font-medium">Enter two postcodes to compare them side-by-side</h3>

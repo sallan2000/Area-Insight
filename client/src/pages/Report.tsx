@@ -167,7 +167,7 @@ export default function Report() {
               title="Safety"
               score={scores.safety}
               icon={<Shield className="w-6 h-6" />}
-              description={`${raw.crimeCount || 0} reported incidents last month`}
+              description={`${raw.crimeCount || 0} incidents reported in the last 12 months`}
               status={getOverallGrade(scores.safety)}
               trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
               isActive={activeTab === 'safety'}

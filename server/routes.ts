@@ -132,22 +132,33 @@ async function fetchAreaMetrics(postcode: string) {
   const city = geoData.result.admin_district || geoData.result.parish || "";
 
   // 2. Fetch Crime Data (Real-time from UK Police API)
-  const crimeRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`);
-  const crimesData = crimeRes.ok ? await crimeRes.json() : [];
+  // Fetching last 12 months for better data density
+  const monthsToFetch = 12;
+  const crimesData: any[] = [];
+  const today = new Date();
+  
+  const fetchPromises = [];
+  for (let i = 1; i <= monthsToFetch; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    fetchPromises.push(
+      fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`)
+        .then(res => res.ok ? res.json() : [])
+        .catch(() => [])
+    );
+  }
+
+  const allMonthsCrimes = await Promise.all(fetchPromises);
+  allMonthsCrimes.forEach(monthCrimes => crimesData.push(...monthCrimes));
+  
   const crimeCount = crimesData.length;
   
-  // Real crime trend (last month vs month before)
-  const today = new Date();
-  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const monthBefore = new Date(today.getFullYear(), today.getMonth() - 2, 1);
-  const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
-  const monthBeforeStr = `${monthBefore.getFullYear()}-${String(monthBefore.getMonth() + 1).padStart(2, '0')}`;
+  // Trend calculation: First 6 months vs Last 6 months
+  const recent6Months = allMonthsCrimes.slice(0, 6).reduce((acc, m) => acc + m.length, 0);
+  const older6Months = allMonthsCrimes.slice(6, 12).reduce((acc, m) => acc + m.length, 0);
+  const crimeTrend = recent6Months < older6Months ? "down" : (recent6Months > older6Months ? "up" : "stable");
 
-  const crimeHistRes = await fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${monthBeforeStr}`);
-  const histCrimes = crimeHistRes.ok ? await crimeHistRes.json() : [];
-  const crimeTrend = crimesData.length < histCrimes.length ? "down" : (crimesData.length > histCrimes.length ? "up" : "stable");
-
-  // 5. Bespoke Safety Analysis
+  // 5. Bespoke Safety Analysis (using the 12 month aggregate)
   const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery' || c.category === 'possession-of-weapons').length;
   const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person' || c.category === 'shoplifting').length;
   const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour' || c.category === 'public-order').length;
@@ -230,10 +241,10 @@ function calculateScores(metrics: any) {
 
   // 2.3 Safety Score (Bespoke)
   // Base Safety starts at 100
-  // More aggressive reduction to see variation
-  const severityPoints = normalize(metrics.safetySeverity, 0, 30); // Lowered max for more sensitivity
+  // More aggressive reduction to see variation with 12 months of data
+  const severityPoints = normalize(metrics.safetySeverity, 0, 300); // Increased max for 12 months
   const crimeDensity = metrics.crimeCount / 3.14; 
-  const crimeDensityPoints = normalize(crimeDensity, 0, 50); // Lowered max for more sensitivity
+  const crimeDensityPoints = normalize(crimeDensity, 0, 500); // Increased max for 12 months
   
   let safetyBase = 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.7);
   

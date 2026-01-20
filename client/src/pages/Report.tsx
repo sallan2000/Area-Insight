@@ -52,7 +52,7 @@ export default function Report() {
             <div className="absolute inset-0 border-4 border-primary/20 rounded-full animate-pulse"></div>
             <div className="absolute inset-0 border-t-4 border-primary rounded-full animate-spin"></div>
           </div>
-          <h2 className="text-2xl font-display font-bold text-foreground">Analyzing Area Data...</h2>
+          <h2 className="text-2xl font-display font-bold text-foreground">Analysing Area Data...</h2>
           <p className="text-muted-foreground">We're crunching numbers from Police, Ofsted, and Transport APIs.</p>
         </div>
       </div>

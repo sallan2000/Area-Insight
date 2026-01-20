@@ -60,45 +60,47 @@ export default function Home() {
             Live UK Data Analysis
           </div>
           
-          <h1 className="text-5xl md:text-7xl font-display font-bold text-foreground tracking-tight text-balance">
-            Discover the truth about <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600">your neighborhood</span>
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-bold text-foreground tracking-tight text-balance">
+            Discover the truth about <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600">your neighbourhood</span>
           </h1>
           
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
-            Instantly analyze any UK postcode for crime rates, transport links, school quality, and local amenities. Get the real data before you move.
+          <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
+            Instantly analyse any UK postcode for crime rates, transport links, school quality, and local amenities. Get the real data before you move.
           </p>
 
           <motion.form 
             onSubmit={handleSearch}
-            className="max-w-md w-full mx-auto relative group"
+            className="w-full max-w-md mx-auto relative group px-2 sm:px-0"
             whileHover={{ scale: 1.01 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
           >
             <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-blue-600/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             
-            <div className="relative flex items-center bg-white rounded-2xl p-2 shadow-xl shadow-blue-900/5 border border-border focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all duration-300">
-              <Search className="ml-4 h-5 w-5 text-muted-foreground" />
-              <input 
-                type="text" 
-                placeholder="Enter a UK postcode (e.g. SW1A 1AA)" 
-                className="flex-1 px-4 py-3 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 font-medium"
-                value={postcode}
-                onChange={(e) => setPostcode(e.target.value.toUpperCase())}
-                disabled={isPending}
-              />
+            <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-white rounded-2xl p-2 shadow-xl shadow-blue-900/5 border border-border focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/10 transition-all duration-300 gap-2 sm:gap-0">
+              <div className="flex items-center flex-1">
+                <Search className="ml-4 h-5 w-5 text-muted-foreground shrink-0" />
+                <input 
+                  type="text" 
+                  placeholder="Enter a UK postcode (e.g. SW1A 1AA)" 
+                  className="flex-1 min-w-0 px-4 py-3 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 font-medium text-sm sm:text-base"
+                  value={postcode}
+                  onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+                  disabled={isPending}
+                />
+              </div>
               <button 
                 type="submit" 
                 disabled={isPending}
-                className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
+                className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
               >
                 {isPending ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Analyzing...</span>
+                    <span>Analysing...</span>
                   </>
                 ) : (
                   <>
-                    <span>Analyze</span>
+                    <span>Analyse</span>
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}

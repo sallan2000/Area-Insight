@@ -31,15 +31,28 @@ export default function Compare() {
 
   const handleCompare = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pc1 || !pc2) return;
+    if (!pc1.trim() || !pc2.trim()) return;
 
-    // We need to create/get both
-    const res1 = await apiRequest("POST", "/api/assess", { postcode: pc1 });
-    const data1 = await res1.json();
-    const res2 = await apiRequest("POST", "/api/assess", { postcode: pc2 });
-    const data2 = await res2.json();
+    try {
+      // We need to create/get both
+      const [res1, res2] = await Promise.all([
+        apiRequest("POST", "/api/assess", { postcode: pc1.trim() }),
+        apiRequest("POST", "/api/assess", { postcode: pc2.trim() })
+      ]);
 
-    setIds({ id1: data1.id, id2: data2.id });
+      if (!res1.ok || !res2.ok) {
+        throw new Error("Failed to fetch one or both postcodes");
+      }
+
+      const [data1, data2] = await Promise.all([
+        res1.json(),
+        res2.json()
+      ]);
+
+      setIds({ id1: data1.id, id2: data2.id });
+    } catch (error) {
+      console.error("Comparison error:", error);
+    }
   };
 
   const getWinner = (v1: number, v2: number) => {

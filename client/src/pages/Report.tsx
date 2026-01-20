@@ -276,15 +276,68 @@ export default function Report() {
                           ))}
                         </>
                       )}
-                      {activeTab === 'schools' && raw.schools?.list?.map((s: any, i: number) => (
-                        <li key={i} className="text-sm flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                            {s.name || s}
+                      {activeTab === 'schools' && (
+                        <div className="space-y-6">
+                          <div>
+                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
+                            <ul className="space-y-2">
+                              {raw.schools?.list?.filter((s: any) => 
+                                s.name?.toLowerCase().includes('primary') || 
+                                s.name?.toLowerCase().includes('nursery') || 
+                                s.name?.toLowerCase().includes('infant') || 
+                                s.name?.toLowerCase().includes('junior') ||
+                                s.category === 'kindergarten'
+                              ).map((s: any, i: number) => (
+                                <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                    {s.name || s}
+                                  </div>
+                                  {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                                </li>
+                              ))}
+                              {raw.schools?.list?.filter((s: any) => 
+                                s.name?.toLowerCase().includes('primary') || 
+                                s.name?.toLowerCase().includes('nursery') || 
+                                s.name?.toLowerCase().includes('infant') || 
+                                s.name?.toLowerCase().includes('junior') ||
+                                s.category === 'kindergarten'
+                              ).length === 0 && (
+                                <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
+                              )}
+                            </ul>
                           </div>
-                          {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                        </li>
-                      ))}
+                          <div>
+                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
+                            <ul className="space-y-2">
+                              {raw.schools?.list?.filter((s: any) => 
+                                !(s.name?.toLowerCase().includes('primary') || 
+                                  s.name?.toLowerCase().includes('nursery') || 
+                                  s.name?.toLowerCase().includes('infant') || 
+                                  s.name?.toLowerCase().includes('junior') ||
+                                  s.category === 'kindergarten')
+                              ).map((s: any, i: number) => (
+                                <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                    {s.name || s}
+                                  </div>
+                                  {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                                </li>
+                              ))}
+                              {raw.schools?.list?.filter((s: any) => 
+                                !(s.name?.toLowerCase().includes('primary') || 
+                                  s.name?.toLowerCase().includes('nursery') || 
+                                  s.name?.toLowerCase().includes('infant') || 
+                                  s.name?.toLowerCase().includes('junior') ||
+                                  s.category === 'kindergarten')
+                              ).length === 0 && (
+                                <li className="text-sm text-muted-foreground italic">No secondary or higher education facilities identified nearby.</li>
+                              )}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
                       {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
                         <li key={i} className="text-sm flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">

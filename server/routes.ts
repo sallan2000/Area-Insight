@@ -17,7 +17,7 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return R * c;
 }
 
-function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string) {
+function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number) {
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -209,7 +209,7 @@ async function fetchAreaMetrics(postcode: string) {
     }
   }
   
-  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city);
+  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes);
 }
 
 // Scoring Logic

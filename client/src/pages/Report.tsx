@@ -286,6 +286,9 @@ export default function Report() {
                                 s.name?.toLowerCase().includes('nursery') || 
                                 s.name?.toLowerCase().includes('infant') || 
                                 s.name?.toLowerCase().includes('junior') ||
+                                s.name?.toLowerCase().includes('pre-school') ||
+                                s.name?.toLowerCase().includes('pre school') ||
+                                s.name?.toLowerCase().includes('early learning') ||
                                 s.category === 'kindergarten'
                               ).map((s: any, i: number) => (
                                 <li key={i} className="text-sm flex items-center justify-between gap-2">
@@ -301,6 +304,9 @@ export default function Report() {
                                 s.name?.toLowerCase().includes('nursery') || 
                                 s.name?.toLowerCase().includes('infant') || 
                                 s.name?.toLowerCase().includes('junior') ||
+                                s.name?.toLowerCase().includes('pre-school') ||
+                                s.name?.toLowerCase().includes('pre school') ||
+                                s.name?.toLowerCase().includes('early learning') ||
                                 s.category === 'kindergarten'
                               ).length === 0 && (
                                 <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
@@ -315,6 +321,9 @@ export default function Report() {
                                   s.name?.toLowerCase().includes('nursery') || 
                                   s.name?.toLowerCase().includes('infant') || 
                                   s.name?.toLowerCase().includes('junior') ||
+                                  s.name?.toLowerCase().includes('pre-school') ||
+                                  s.name?.toLowerCase().includes('pre school') ||
+                                  s.name?.toLowerCase().includes('early learning') ||
                                   s.category === 'kindergarten')
                               ).map((s: any, i: number) => (
                                 <li key={i} className="text-sm flex items-center justify-between gap-2">

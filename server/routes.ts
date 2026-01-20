@@ -175,7 +175,7 @@ async function fetchAreaMetrics(postcode: string) {
   // 3. Amenities & Schools from OpenStreetMap (Overpass API)
   const overpassUrl = "https://www.overpass-api.de/api/interpreter";
   const query = `
-    [out:json][timeout:30];
+    [out:json][timeout:90];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"~"school|college|university|kindergarten"](around:5000,${lat},${lng});
@@ -183,45 +183,55 @@ async function fetchAreaMetrics(postcode: string) {
       node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
       node["railway"~"station|halt"](around:5000,${lat},${lng});
       way["railway"~"station|halt"](around:5000,${lat},${lng});
-      relation["boundary"="postal_code"]["postal_code"~"${postcode.split(' ')[0]}"](around:1000,${lat},${lng});
     );
     out body center;
   `;
   
-  const osmRes = await fetch(overpassUrl, {
-    method: "POST",
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
-    },
-    body: `data=${encodeURIComponent(query)}`
-  });
-  
-  let elements = [];
-  if (osmRes.ok) {
-    const osmData = await osmRes.json();
-    elements = osmData.elements || [];
-  } else {
-    const errorText = await osmRes.text();
-    console.error(`Overpass API Error: ${osmRes.status} ${osmRes.statusText}`, errorText);
-    // Fallback to alternate server
-    const fallbackUrl = "https://overpass.kumi.systems/api/interpreter";
-    try {
-      const fallbackRes = await fetch(fallbackUrl, {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'ScoreMyStreet/1.0'
-        },
-        body: `data=${encodeURIComponent(query)}`
-      });
-      if (fallbackRes.ok) {
-        const fallbackData = await fallbackRes.json();
-        elements = fallbackData.elements || [];
-      }
-    } catch (e) {
-      console.error("Fallback Overpass failed", e);
+  const fetchFromOverpass = async (url: string, queryStr: string) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
+      },
+      body: `data=${encodeURIComponent(queryStr)}`
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Overpass API Error: ${res.status} ${res.statusText} ${errorText}`);
     }
+    
+    const data = await res.json();
+    if (data.remark && data.remark.includes("timeout")) {
+      throw new Error("Overpass API timeout");
+    }
+    return data.elements || [];
+  };
+
+  let elements = [];
+  try {
+    elements = await fetchFromOverpass(overpassUrl, query);
+  } catch (e: any) {
+    console.error("Primary Overpass failed, trying fallback...", e.message);
+    const fallbackUrls = [
+      "https://overpass.kumi.systems/api/interpreter",
+      "https://overpass.osm.ch/api/interpreter",
+      "https://overpass.be/api/interpreter"
+    ];
+    
+    for (const url of fallbackUrls) {
+      try {
+        elements = await fetchFromOverpass(url, query);
+        if (elements.length > 0) break;
+      } catch (fallbackErr: any) {
+        console.error(`Fallback Overpass ${url} failed:`, fallbackErr.message);
+      }
+    }
+  }
+
+  if (elements.length === 0) {
+    throw new Error("Could not retrieve local amenities from any provider. The mapping servers might be temporarily busy. Please try again in a few moments.");
   }
   
   return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes);

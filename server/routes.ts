@@ -388,9 +388,18 @@ export async function registerRoutes(
       const data = insertShareRequestSchema.parse(req.body);
       const shareRequest = await storage.createShareRequest(data);
       
+      const assessment = await storage.getAssessment(data.assessmentId);
+      if (!assessment) {
+        return res.status(404).json({ message: "Assessment not found" });
+      }
+
+      const reportUrl = `${req.get('origin')}/report/${assessment.id}`;
+      
       // In a real production app, we would use an email provider like SendGrid or Resend here.
       // Since we are in development, we'll log the email and return success.
       console.log(`[EMAIL SIMULATION] Sending report link for assessment ${data.assessmentId} to ${data.email}`);
+      console.log(`[EMAIL CONTENT] Subject: Neighborhood Report for ${assessment.postcode}`);
+      console.log(`[EMAIL CONTENT] Body: View your report here: ${reportUrl}`);
       
       res.status(201).json(shareRequest);
     } catch (err) {

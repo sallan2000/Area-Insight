@@ -162,8 +162,8 @@ export default function Report() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Report Link</label>
               <div className="flex gap-2">
-                <Input readOnly value={reportUrl} className="bg-muted" />
-                <Button size="icon" variant="outline" onClick={copyToClipboard}>
+                <Input readOnly value={reportUrl} className="bg-muted h-10" />
+                <Button size="icon" variant="outline" onClick={copyToClipboard} className="h-10 w-10 shrink-0">
                   {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>

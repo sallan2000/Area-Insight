@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertAssessmentSchema, assessments } from './schema';
+import { insertAssessmentSchema, assessments, insertShareRequestSchema } from './schema';
 
 export const errorSchemas = {
   validation: z.object({

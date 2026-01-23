@@ -334,7 +334,11 @@ export async function registerRoutes(
           postcode: cleanPostcode,
           lat: data.lat,
           lng: data.lng,
-          rawMetrics: { ...data.metrics, street: data.street, city: data.city },
+          rawMetrics: { 
+            ...data.metrics, 
+            street: data.street, 
+            city: data.city 
+          },
           scores: scores
         });
 

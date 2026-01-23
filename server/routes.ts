@@ -51,7 +51,20 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
 
   const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop" || e.tags?.highway === "platform"), 5);
   const trainStationList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.railway === "station" || e.tags?.railway === "halt"), 5);
-  const schoolList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university" || e.tags?.amenity === "kindergarten"), 5);
+  
+  const allSchools = elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university" || e.tags?.amenity === "kindergarten");
+  
+  const primaryKeywords = ["primary", "nursery", "infant", "junior", "pre-school", "pre school", "early learning", "kindergarten"];
+  
+  const primarySchools = getNearest(allSchools.filter((s: any) => {
+    const name = (s.tags.name || "").toLowerCase();
+    return primaryKeywords.some(k => name.includes(k));
+  }), 5);
+
+  const secondarySchools = getNearest(allSchools.filter((s: any) => {
+    const name = (s.tags.name || "").toLowerCase();
+    return !primaryKeywords.some(k => name.includes(k));
+  }), 5);
   
   const amenitiesList = [
     ...localAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 })),
@@ -105,8 +118,9 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     schools: {
       primaryRating: 80,
       secondaryRating: 80,
-      count: schoolsCount,
-      list: schoolList
+      count: primarySchools.length + secondarySchools.length,
+      primaryList: primarySchools,
+      secondaryList: secondarySchools
     }
   };
 

@@ -7,6 +7,7 @@ import { LoadingModal } from "@/components/LoadingModal";
 
 export default function Home() {
   const [postcode, setPostcode] = useState("");
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const { mutate, isPending } = useCreateAssessment();
   const { toast } = useToast();
 
@@ -33,12 +34,22 @@ export default function Home() {
       return;
     }
     
+    setCompletedSteps([]);
+    
+    // Simulate progress for UX
+    const steps = ["transport", "safety", "schools", "amenities"];
+    steps.forEach((step, index) => {
+      setTimeout(() => {
+        setCompletedSteps(prev => [...prev, step]);
+      }, (index + 1) * 800);
+    });
+
     mutate({ postcode: cleanPostcode });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
-      <LoadingModal isOpen={isPending} />
+      <LoadingModal isOpen={isPending} completedSteps={completedSteps} />
       {/* Navigation */}
       <nav className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
         <div className="flex items-center gap-2">

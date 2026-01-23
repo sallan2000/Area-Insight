@@ -9,13 +9,26 @@ import {
   Share2, 
   MapPin,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  Mail,
+  Copy,
+  Check
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { 
   BarChart, 
   Bar, 
@@ -43,6 +56,11 @@ export default function Report() {
   const [, setLocation] = useLocation();
   const { data: report, isLoading, error } = useAssessment(Number(id));
   const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities'>('safety');
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   if (isLoading) {
     return (
@@ -85,8 +103,103 @@ export default function Report() {
     (scores.transport + scores.safety + scores.amenities + scores.schools) / 4
   );
 
+  const reportUrl = `${window.location.origin}/report/${id}`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(reportUrl);
+    setCopied(true);
+    toast({
+      title: "Link copied!",
+      description: "Report URL has been copied to your clipboard.",
+    });
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShareEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+
+    setIsSending(true);
+    try {
+      const res = await apiRequest("POST", "/api/share", {
+        assessmentId: Number(id),
+        email
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to send email");
+      }
+
+      toast({
+        title: "Report shared!",
+        description: `The link has been sent to ${email}`,
+      });
+      setIsShareModalOpen(false);
+      setEmail("");
+    } catch (err: any) {
+      toast({
+        title: "Sharing failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      <Dialog open={isShareModalOpen} onOpenChange={setIsShareModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share Report</DialogTitle>
+            <DialogDescription>
+              Share this liveability assessment for {report.postcode} with others.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Report Link</label>
+              <div className="flex gap-2">
+                <Input readOnly value={reportUrl} className="bg-muted" />
+                <Button size="icon" variant="outline" onClick={copyToClipboard}>
+                  {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground font-medium">Or email to yourself</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleShareEmail} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    type="email" 
+                    placeholder="name@example.com" 
+                    className="pl-9"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <Button type="submit" className="w-full" disabled={isSending}>
+                {isSending ? "Sending..." : "Send Report"}
+              </Button>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -110,7 +223,7 @@ export default function Report() {
               </h1>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
             <Share2 className="w-4 h-4" />
             Share Report
           </Button>

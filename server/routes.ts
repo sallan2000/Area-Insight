@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api } from "@shared/routes";
+import { api, insertShareRequestSchema } from "@shared/routes";
 import { z } from "zod";
 
 // Helper function to calculate distance between two points in km using Haversine formula
@@ -381,6 +381,24 @@ export async function registerRoutes(
       return res.status(404).json({ message: 'Assessment not found' });
     }
     res.json(assessment);
+  });
+
+  app.post("/api/share", async (req, res) => {
+    try {
+      const data = insertShareRequestSchema.parse(req.body);
+      const shareRequest = await storage.createShareRequest(data);
+      
+      // In a real production app, we would use an email provider like SendGrid or Resend here.
+      // Since we are in development, we'll log the email and return success.
+      console.log(`[EMAIL SIMULATION] Sending report link for assessment ${data.assessmentId} to ${data.email}`);
+      
+      res.status(201).json(shareRequest);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   return httpServer;

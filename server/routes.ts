@@ -315,15 +315,23 @@ export async function registerRoutes(
   app.post(api.assess.create.path, async (req, res) => {
     try {
       const { postcode } = api.assess.create.input.parse(req.body);
+      const cleanPostcode = postcode.trim().toUpperCase();
       
       try {
-        // Fetch and Calculate
-        const data = await fetchAreaMetrics(postcode);
+        // Check cache first (within last 30 days)
+        const cached = await storage.getAssessmentByPostcode(cleanPostcode);
+        if (cached) {
+          await storage.updateLastSearchedAt(cached.id);
+          return res.status(200).json(cached);
+        }
+
+        // Fetch and Calculate if not cached or cache expired
+        const data = await fetchAreaMetrics(cleanPostcode);
         const scores = calculateScores(data.metrics);
         
         // Store
         const assessment = await storage.createAssessment({
-          postcode,
+          postcode: cleanPostcode,
           lat: data.lat,
           lng: data.lng,
           rawMetrics: { ...data.metrics, street: data.street, city: data.city },

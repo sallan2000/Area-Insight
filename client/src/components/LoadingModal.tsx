@@ -3,9 +3,10 @@ import { Loader2, CheckCircle2 } from "lucide-react";
 
 interface LoadingModalProps {
   isOpen: boolean;
+  completedSteps?: string[];
 }
 
-export function LoadingModal({ isOpen }: LoadingModalProps) {
+export function LoadingModal({ isOpen, completedSteps = [] }: LoadingModalProps) {
   const statuses = [
     { label: "Finding nearest transport links", id: "transport" },
     { label: "Searching law enforcement data", id: "safety" },
@@ -27,14 +28,21 @@ export function LoadingModal({ isOpen }: LoadingModalProps) {
             </div>
           </div>
           <div className="space-y-4">
-            {statuses.map((status) => (
-              <div key={status.id} className="flex items-center justify-between group">
-                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                  {status.label}
-                </span>
-                <Loader2 className="h-4 w-4 text-primary animate-spin opacity-50" />
-              </div>
-            ))}
+            {statuses.map((status) => {
+              const isCompleted = completedSteps.includes(status.id);
+              return (
+                <div key={status.id} className="flex items-center justify-between group">
+                  <span className={`text-sm font-medium transition-colors ${isCompleted ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
+                    {status.label}
+                  </span>
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Loader2 className="h-4 w-4 text-primary animate-spin opacity-50" />
+                  )}
+                </div>
+              );
+            })}
           </div>
           <p className="text-center text-xs text-muted-foreground animate-pulse mt-6">
             Connecting to UK Open Data portals...

@@ -25,6 +25,7 @@ export default function Compare() {
   const [pc2, setPc2] = useState("");
   const [ids, setIds] = useState<{id1?: number, id2?: number}>({});
   const [isCreating, setIsCreating] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
   const { data: report1, isLoading: loading1 } = useAssessment(ids.id1!);
   const { data: report2, isLoading: loading2 } = useAssessment(ids.id2!);
@@ -54,7 +55,16 @@ export default function Compare() {
     }
 
     setIds({});
+    setCompletedSteps([]);
     setIsCreating(true);
+
+    // Simulate progress for UX
+    const steps = ["transport", "safety", "schools", "amenities"];
+    steps.forEach((step, index) => {
+      setTimeout(() => {
+        setCompletedSteps(prev => [...prev, step]);
+      }, (index + 1) * 1200);
+    });
 
     try {
       const [res1, res2] = await Promise.all([
@@ -95,7 +105,7 @@ export default function Compare() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <LoadingModal isOpen={isCreating} />
+      <LoadingModal isOpen={isCreating} completedSteps={completedSteps} />
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">

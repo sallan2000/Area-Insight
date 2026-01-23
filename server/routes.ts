@@ -40,7 +40,19 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     for (const item of list) {
       const name = item.tags.name || "Unnamed";
       if (!unique.has(name)) {
-        unique.set(name, item);
+        // Detect hubs/terminals
+        const isHub = item.tags.railway === "station" && (
+          (item.tags.name || "").toLowerCase().includes("terminal") ||
+          (item.tags.name || "").toLowerCase().includes("international") ||
+          (item.tags.name || "").toLowerCase().includes("hub") ||
+          (item.tags.station === "main")
+        );
+        const isBusStation = (item.tags.highway === "bus_stop" || item.tags.highway === "platform") && (
+          (item.tags.name || "").toLowerCase().includes("bus station") ||
+          (item.tags.name || "").toLowerCase().includes("interchange")
+        );
+        
+        unique.set(name, { ...item, isHub: isHub || isBusStation });
       }
       if (unique.size >= limit) break;
     }
@@ -48,7 +60,8 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
       .filter(item => item.tags.name && item.tags.name !== "Unnamed")
       .map(item => ({
         name: item.tags.name,
-        distance: item.distance // Use the precise distance calculated
+        distance: item.distance,
+        isHub: item.isHub
       }));
   };
 
@@ -80,6 +93,7 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
 
   const busStops = busStopList.length;
   const trainStations = trainStationList.length;
+  const hasMajorHub = trainStationList.some(s => s.isHub) || busStopList.some(s => s.isHub);
   const schoolsCount = primarySchools.length + secondarySchools.length;
   
   const categories = new Set(amenitiesList.map((e: any) => e.category));
@@ -110,6 +124,7 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
       busStopDensity,
       busStopCount: busStops,
       stationCount: trainStations,
+      hasMajorHub,
       commuteCityCenter,
       commuteMajorHub,
       busStops: busStopList,
@@ -272,7 +287,8 @@ function calculateScores(metrics: any) {
   const t3 = 100 - normalize(metrics.transport.commuteCityCenter, 20, 60);
   const t4 = 100 - normalize(metrics.transport.commuteMajorHub, 15, 45);
   
-  const transportScoreFinal = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
+  const transportScoreFinalRaw = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
+  const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
   // 2.3 Safety Score (Bespoke)
   // Base Safety starts at 100

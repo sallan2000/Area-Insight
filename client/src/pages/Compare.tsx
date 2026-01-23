@@ -4,7 +4,6 @@ import { useAssessment } from "@/hooks/use-assess";
 import { 
   ArrowLeft, 
   MapPin, 
-  Loader2, 
   Check, 
   Shield,
   Bus,
@@ -17,6 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { LoadingModal } from "@/components/LoadingModal";
 
 export default function Compare() {
   const [, setLocation] = useLocation();
@@ -95,6 +95,7 @@ export default function Compare() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      <LoadingModal isOpen={isCreating} />
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -136,7 +137,7 @@ export default function Compare() {
               </div>
             </div>
             <Button type="submit" className="w-full" disabled={isCreating}>
-              {isCreating ? <Loader2 className="animate-spin mr-2" /> : <TrendingUp className="mr-2 h-4 w-4" />}
+              <TrendingUp className="mr-2 h-4 w-4" />
               Compare Areas
             </Button>
           </form>

@@ -12,6 +12,7 @@ export const assessments = pgTable("assessments", {
   rawMetrics: jsonb("raw_metrics").notNull(), // Stores raw data counts
   scores: jsonb("scores").notNull(), // Stores calculated 0-100 scores
   createdAt: timestamp("created_at").defaultNow(),
+  lastSearchedAt: timestamp("last_searched_at").defaultNow(),
 });
 
 export const insertAssessmentSchema = createInsertSchema(assessments).extend({

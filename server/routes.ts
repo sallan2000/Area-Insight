@@ -43,10 +43,12 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
       }
       if (unique.size >= limit) break;
     }
-    return Array.from(unique.values()).map(item => ({
-      name: item.tags.name || "Unnamed",
-      distance: Math.round(item.distance * 10) / 10
-    }));
+    return Array.from(unique.values())
+      .filter(item => item.tags.name && item.tags.name !== "Unnamed")
+      .map(item => ({
+        name: item.tags.name,
+        distance: Math.round(item.distance * 10) / 10
+      }));
   };
 
   const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop" || e.tags?.highway === "platform"), 5);
@@ -67,8 +69,12 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
   }), 5);
   
   const amenitiesList = [
-    ...localAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Local Amenity", category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 })),
-    ...essentialAmenitiesElements.map((e: any) => ({ name: e.tags.name || "Essential Service", category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 }))
+    ...localAmenitiesElements
+      .filter(e => e.tags.name && e.tags.name !== "Unnamed")
+      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 })),
+    ...essentialAmenitiesElements
+      .filter(e => e.tags.name && e.tags.name !== "Unnamed")
+      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 }))
   ].sort((a, b) => a.distance - b.distance);
 
   const busStops = busStopList.length;

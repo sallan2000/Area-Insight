@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useCreateAssessment } from "@/hooks/use-assess";
-import { Search, MapPin, Loader2, ArrowRight } from "lucide-react";
+import { Search, MapPin, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { LoadingModal } from "@/components/LoadingModal";
 
 export default function Home() {
   const [postcode, setPostcode] = useState("");
@@ -37,6 +38,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
+      <LoadingModal isOpen={isPending} />
       {/* Navigation */}
       <nav className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
         <div className="flex items-center gap-2">
@@ -105,17 +107,8 @@ export default function Home() {
                 disabled={isPending}
                 className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
               >
-                {isPending ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Analysing...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Analyse</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
+                <span>Analyse</span>
+                <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           </motion.form>

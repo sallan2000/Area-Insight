@@ -73,7 +73,7 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
 
   const busStops = busStopList.length;
   const trainStations = trainStationList.length;
-  const schoolsCount = schoolList.length;
+  const schoolsCount = primarySchools.length + secondarySchools.length;
   
   const categories = new Set(amenitiesList.map((e: any) => e.category));
   

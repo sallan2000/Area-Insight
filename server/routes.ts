@@ -275,8 +275,8 @@ function calculateScores(metrics: any) {
   // 2.5 Schools Score
   const schoolsScoreFinal = (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
 
-  // 2.6 Liveability Score
-  const totalScore = (transportScoreFinal * 0.25) + (safetyScoreFinal * 0.25) + (amenitiesScoreFinal * 0.25) + (schoolsScoreFinal * 0.25);
+  // 2.6 Liveability Score: L = 0.25T + 0.35√S + 0.20A + 0.20E
+  const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
 
   return {
     transport: Math.round(transportScoreFinal),

@@ -1,8 +1,11 @@
 import { db } from "./db";
 import {
   assessments,
+  shareRequests,
   type InsertAssessment,
-  type Assessment
+  type Assessment,
+  type InsertShareRequest,
+  type ShareRequest
 } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
 
@@ -11,6 +14,7 @@ export interface IStorage {
   getAssessment(id: number): Promise<Assessment | undefined>;
   getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined>;
   updateLastSearchedAt(id: number): Promise<void>;
+  createShareRequest(request: InsertShareRequest): Promise<ShareRequest>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -48,6 +52,13 @@ export class DatabaseStorage implements IStorage {
     await db.update(assessments)
       .set({ lastSearchedAt: new Date() })
       .where(eq(assessments.id, id));
+  }
+
+  async createShareRequest(insertRequest: InsertShareRequest): Promise<ShareRequest> {
+    const [request] = await db.insert(shareRequests)
+      .values(insertRequest)
+      .returning();
+    return request;
   }
 }
 

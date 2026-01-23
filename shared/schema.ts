@@ -25,4 +25,19 @@ export const insertAssessmentSchema = createInsertSchema(assessments).extend({
 export type Assessment = typeof assessments.$inferSelect;
 export type InsertAssessment = z.infer<typeof insertAssessmentSchema>;
 
-export type AssessmentResponse = Assessment;
+export const shareRequests = pgTable("share_requests", {
+  id: serial("id").primaryKey(),
+  assessmentId: serial("assessment_id").references(() => assessments.id),
+  email: text("email").notNull(),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
+export const insertShareRequestSchema = createInsertSchema(shareRequests).extend({
+  email: z.string().email("Please enter a valid email address")
+}).omit({ 
+  id: true, 
+  sentAt: true 
+});
+
+export type ShareRequest = typeof shareRequests.$inferSelect;
+export type InsertShareRequest = z.infer<typeof insertShareRequestSchema>;

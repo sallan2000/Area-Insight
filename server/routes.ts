@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 
-// Helper function to calculate distance between two points in km
+// Helper function to calculate distance between two points in km using Haversine formula
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; // Radius of the earth in km
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -14,7 +14,8 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  const distance = R * c;
+  return Math.round(distance * 100) / 100; // Return precision to 2 decimal places (10m accuracy)
 }
 
 function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number) {
@@ -47,7 +48,7 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
       .filter(item => item.tags.name && item.tags.name !== "Unnamed")
       .map(item => ({
         name: item.tags.name,
-        distance: Math.round(item.distance * 10) / 10
+        distance: item.distance // Use the precise distance calculated
       }));
   };
 
@@ -71,10 +72,10 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
   const amenitiesList = [
     ...localAmenitiesElements
       .filter(e => e.tags.name && e.tags.name !== "Unnamed")
-      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 })),
+      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: e.distance })),
     ...essentialAmenitiesElements
       .filter(e => e.tags.name && e.tags.name !== "Unnamed")
-      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: Math.round(e.distance * 10) / 10 }))
+      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: e.distance }))
   ].sort((a, b) => a.distance - b.distance);
 
   const busStops = busStopList.length;

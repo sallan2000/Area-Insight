@@ -203,19 +203,24 @@ export default function Report() {
             </h3>
           </div>
           
-          <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-6">
-              <div className="prose prose-sm text-muted-foreground">
-                <p>
-                  This area scores <strong>{Math.round(scores[activeTab])}/100</strong> for {activeTab}. 
-                  The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
-                </p>
-              </div>
-              
-              <div className="space-y-4">
-                <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="p-4 bg-gray-50 rounded-xl">
+          <div className="p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div className="p-6 bg-gray-50 rounded-xl border border-border">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
+                    <span className="text-2xl font-bold text-primary">{Math.round(scores[activeTab])}/100</span>
+                  </div>
+                  <div className="prose prose-sm text-muted-foreground">
+                    <p>
+                      The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
+                  <div className="p-4 bg-gray-50 rounded-xl border border-border">
                     <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
                     <p className="text-xl font-bold text-foreground">
                       {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
@@ -225,122 +230,112 @@ export default function Report() {
                     </p>
                   </div>
                 </div>
-
-                <div className="mt-6">
-                  <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide mb-3">Nearby Highlights</h4>
-                  <div className="bg-gray-50 rounded-xl p-4 max-h-[300px] overflow-y-auto">
-                    <ul className="space-y-2">
-                      {activeTab === 'safety' && raw.safetyBreakdown && (
-                        <div className="space-y-3">
-                          {[
-                            { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
-                            { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
-                            { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
-                            { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
-                            { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
-                          ].map((item) => (
-                            <div key={item.label} className="space-y-1">
-                              <div className="flex justify-between text-xs font-medium">
-                                <span>{item.label}</span>
-                                <span>{item.value}</span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div 
-                                  className={`${item.color} h-1.5 rounded-full`} 
-                                  style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {activeTab === 'transport' && (
-                        <>
-                          {raw.transport?.stations?.map((s: any, i: number) => (
-                            <li key={i} className="text-sm flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                <span className="font-medium">Station:</span> {s.name || s}
-                              </div>
-                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                            </li>
-                          ))}
-                          {raw.transport?.busStops?.map((s: any, i: number) => (
-                            <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                                <span className="font-medium">Bus Stop:</span> {s.name || s}
-                              </div>
-                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                            </li>
-                          ))}
-                        </>
-                      )}
-                      {activeTab === 'schools' && (
-                        <div className="space-y-6">
-                          <div>
-                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
-                            <ul className="space-y-2">
-                              {raw.schools?.primaryList?.map((s: any, i: number) => (
-                                <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                    {s.name || s}
-                                  </div>
-                                  {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                                </li>
-                              ))}
-                              {(!raw.schools?.primaryList || raw.schools.primaryList.length === 0) && (
-                                <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
-                              )}
-                            </ul>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
-                            <ul className="space-y-2">
-                              {raw.schools?.secondaryList?.map((s: any, i: number) => (
-                                <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                    {s.name || s}
-                                  </div>
-                                  {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                                </li>
-                              ))}
-                              {(!raw.schools?.secondaryList || raw.schools.secondaryList.length === 0) && (
-                                <li className="text-sm text-muted-foreground italic">No secondary or higher education facilities identified nearby.</li>
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-                      )}
-                      {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
-                        <li key={i} className="text-sm flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                            <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
-                          </div>
-                          {a.distance !== undefined && <span className="text-xs text-muted-foreground">{a.distance}km</span>}
-                        </li>
-                      ))}
-                      {activeTab === 'safety' && (
-                        <li className="text-sm italic text-muted-foreground">
-                          Due to privacy, specific crime locations are restricted to street-level anonymized data.
-                        </li>
-                      )}
-                      {(!raw[activeTab]?.list && !raw[activeTab]?.stations && !raw[activeTab]?.busStops && activeTab !== 'safety') && (
-                        <li className="text-sm text-muted-foreground">No specific names found in the immediate vicinity.</li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
               </div>
-            </div>
 
-            <div className="h-[300px] w-full bg-slate-50 rounded-xl flex items-center justify-center p-8 text-center">
-              <div className="space-y-2">
-                <p className="font-semibold text-foreground">Detailed Category Insights</p>
-                <p className="text-sm text-muted-foreground">Selecting a metric on the left will reveal specific data points and local availability for that category.</p>
+              <div className="space-y-4">
+                <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Nearby Highlights</h4>
+                <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
+                  <ul className="space-y-2">
+                    {activeTab === 'safety' && raw.safetyBreakdown && (
+                      <div className="space-y-3">
+                        {[
+                          { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
+                          { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
+                          { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
+                          { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
+                          { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
+                        ].map((item) => (
+                          <div key={item.label} className="space-y-1">
+                            <div className="flex justify-between text-xs font-medium">
+                              <span>{item.label}</span>
+                              <span>{item.value}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                              <div 
+                                className={`${item.color} h-1.5 rounded-full`} 
+                                style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {activeTab === 'transport' && (
+                      <>
+                        {raw.transport?.stations?.map((s: any, i: number) => (
+                          <li key={i} className="text-sm flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                              <span className="font-medium">Station:</span> {s.name || s}
+                            </div>
+                            {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                          </li>
+                        ))}
+                        {raw.transport?.busStops?.map((s: any, i: number) => (
+                          <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                              <span className="font-medium">Bus Stop:</span> {s.name || s}
+                            </div>
+                            {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                          </li>
+                        ))}
+                      </>
+                    )}
+                    {activeTab === 'schools' && (
+                      <div className="space-y-6">
+                        <div>
+                          <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
+                          <ul className="space-y-2">
+                            {raw.schools?.primaryList?.map((s: any, i: number) => (
+                              <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                  {s.name || s}
+                                </div>
+                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                              </li>
+                            ))}
+                            {(!raw.schools?.primaryList || raw.schools.primaryList.length === 0) && (
+                              <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
+                            )}
+                          </ul>
+                        </div>
+                        <div>
+                          <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
+                          <ul className="space-y-2">
+                            {raw.schools?.secondaryList?.map((s: any, i: number) => (
+                              <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                  {s.name || s}
+                                </div>
+                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                              </li>
+                            ))}
+                            {(!raw.schools?.secondaryList || raw.schools.secondaryList.length === 0) && (
+                              <li className="text-sm text-muted-foreground italic">No secondary or higher education facilities identified nearby.</li>
+                            )}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                    {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
+                      <li key={i} className="text-sm flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                          <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
+                        </div>
+                        {a.distance !== undefined && <span className="text-xs text-muted-foreground">{a.distance}km</span>}
+                      </li>
+                    ))}
+                    {activeTab === 'safety' && (
+                      <li className="text-sm italic text-muted-foreground mt-4">
+                        Due to privacy, specific crime locations are restricted to street-level anonymized data.
+                      </li>
+                    )}
+                  </ul>
+                </div>
               </div>
             </div>
           </div>

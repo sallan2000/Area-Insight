@@ -44,7 +44,18 @@ export default function Home() {
       }, (index + 1) * 800);
     });
 
-    mutate({ postcode: cleanPostcode });
+    mutate({ postcode: cleanPostcode }, {
+      onError: (error: any) => {
+        setCompletedSteps([]);
+        toast({
+          title: "Postcode lookup failed",
+          description: error.message.includes("Invalid postcode") 
+            ? "The postcode you entered is not a recognized UK postcode. Please check for typos and try again."
+            : error.message,
+          variant: "destructive",
+        });
+      }
+    });
   };
 
   return (

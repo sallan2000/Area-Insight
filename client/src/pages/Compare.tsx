@@ -78,7 +78,10 @@ export default function Compare() {
       ]);
 
       if (!res1.ok || !res2.ok) {
-        throw new Error(data1.message || data2.message || "Failed to fetch one or both postcodes");
+        const errorMessage = (!res1.ok && data1.message?.includes("Invalid postcode")) || (!res2.ok && data2.message?.includes("Invalid postcode"))
+          ? "One or both postcodes are not recognized as valid UK postcodes. Please check for typos."
+          : (data1.message || data2.message || "Failed to fetch one or both postcodes");
+        throw new Error(errorMessage);
       }
 
       setIds({ id1: data1.id, id2: data2.id });

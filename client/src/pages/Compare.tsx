@@ -31,15 +31,35 @@ export default function Compare() {
 
   const handleCompare = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pc1.trim() || !pc2.trim()) return;
+    const cleanPc1 = pc1.trim().toUpperCase();
+    const cleanPc2 = pc2.trim().toUpperCase();
+    const postcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$/i;
+
+    if (!cleanPc1 || !cleanPc2) {
+      toast({
+        title: "Postcodes required",
+        description: "Please enter two UK postcodes to compare.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!postcodeRegex.test(cleanPc1) || !postcodeRegex.test(cleanPc2)) {
+      toast({
+        title: "Invalid postcode format",
+        description: "One or both postcodes are not in a valid UK format.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setIds({});
     setIsCreating(true);
 
     try {
       const [res1, res2] = await Promise.all([
-        apiRequest("POST", "/api/assess", { postcode: pc1.trim() }),
-        apiRequest("POST", "/api/assess", { postcode: pc2.trim() })
+        apiRequest("POST", "/api/assess", { postcode: cleanPc1 }),
+        apiRequest("POST", "/api/assess", { postcode: cleanPc2 })
       ]);
 
       const [data1, data2] = await Promise.all([

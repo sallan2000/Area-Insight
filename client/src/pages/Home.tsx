@@ -11,16 +11,28 @@ export default function Home() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!postcode.trim()) {
+    const cleanPostcode = postcode.trim().toUpperCase();
+    const postcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$/i;
+
+    if (!cleanPostcode) {
       toast({
         title: "Postcode required",
-        description: "Please enter a valid UK postcode to continue.",
+        description: "Please enter a UK postcode to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!postcodeRegex.test(cleanPostcode)) {
+      toast({
+        title: "Invalid postcode",
+        description: "Please enter a valid UK postcode format (e.g. SW1A 1AA).",
         variant: "destructive",
       });
       return;
     }
     
-    mutate({ postcode });
+    mutate({ postcode: cleanPostcode });
   };
 
   return (

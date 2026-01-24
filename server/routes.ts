@@ -104,6 +104,19 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
   const diversityIndex = categories.size;
   const amenitiesCount = amenitiesList.length; 
 
+  // Estimate Council Tax Band (Fallback heuristic for demo purposes)
+  // In a real app, this would use a property-level API.
+  const getEstimatedBand = (outcode: string) => {
+    const highValuePrefixes = ['SW', 'W', 'NW', 'EC', 'WC', 'SE1', 'E1W'];
+    if (highValuePrefixes.some(p => outcode.startsWith(p))) return 'F-H';
+    return 'B-D';
+  };
+
+  const councilTaxBand = getEstimatedBand(geoData.result.outcode);
+  const councilTaxLink = geoData.result.country === 'Scotland' 
+    ? "https://www.saa.gov.uk/" 
+    : "https://www.tax.service.gov.uk/check-council-tax-band/search";
+
   // Calculate commute (simplified fallback)
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
@@ -143,6 +156,10 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
       count: primarySchools.length + secondarySchools.length,
       primaryList: primarySchools,
       secondaryList: secondarySchools
+    },
+    councilTax: {
+      estimatedBand: councilTaxBand,
+      lookupUrl: councilTaxLink
     }
   };
 
@@ -388,7 +405,7 @@ export async function registerRoutes(
       const data = insertShareRequestSchema.parse(req.body);
       const shareRequest = await storage.createShareRequest(data);
       
-      const assessment = await storage.getAssessment(data.assessmentId);
+      const assessment = await storage.getAssessment(data.assessmentId as number);
       if (!assessment) {
         return res.status(404).json({ message: "Assessment not found" });
       }

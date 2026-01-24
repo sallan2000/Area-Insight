@@ -160,6 +160,21 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     councilTax: {
       estimatedBand: councilTaxBand,
       lookupUrl: councilTaxLink
+    },
+    connectivity: {
+      broadband: [
+        { name: "Zen Internet", trustpilotScore: 4.2, status: "Excellent" },
+        { name: "TalkTalk", trustpilotScore: 2.8, status: "Average" },
+        { name: "Vodafone", trustpilotScore: 2.4, status: "Poor" },
+        { name: "EE", trustpilotScore: 2.1, status: "Poor" },
+        { name: "Virgin Media", trustpilotScore: 1.8, status: "Poor" },
+        { name: "Sky Broadband", trustpilotScore: 1.5, status: "Poor" },
+        { name: "BT Broadband", trustpilotScore: 1.5, status: "Poor" }
+      ],
+      mobile: {
+        fourG: "Excellent",
+        fiveG: "Good"
+      }
     }
   };
 

@@ -14,7 +14,9 @@ import {
   Copy,
   Check,
   Receipt,
-  ArrowRight
+  ArrowRight,
+  Wifi,
+  Signal
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
@@ -343,7 +345,68 @@ export default function Report() {
           </section>
         )}
 
-        {/* Deep Dive Section */}
+        {/* Connectivity Section */}
+        {raw.connectivity && (
+          <section className="mt-8">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Wifi className="w-5 h-5 text-primary" />
+              Digital Connectivity
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="p-6">
+                <h4 className="font-bold mb-4 flex items-center gap-2">
+                  <Wifi className="w-4 h-4" />
+                  Broadband Providers
+                </h4>
+                <div className="space-y-3">
+                  {raw.connectivity.broadband.map((provider: any) => (
+                    <div key={provider.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                      <span className="font-medium">{provider.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          provider.trustpilotScore >= 4 ? 'bg-green-100 text-green-700' : 
+                          provider.trustpilotScore >= 2.5 ? 'bg-yellow-100 text-yellow-700' : 
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {provider.trustpilotScore} ★
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Ranked by Trustpilot scores (2024-2025 data).
+                  </p>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <h4 className="font-bold mb-4 flex items-center gap-2">
+                  <Signal className="w-4 h-4" />
+                  Mobile Signal Quality
+                </h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50/50 border border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
+                      <span className="font-semibold">LTE Coverage</span>
+                    </div>
+                    <span className="text-blue-700 font-bold">{raw.connectivity.mobile.fourG}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-4 rounded-xl bg-purple-50/50 border border-purple-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
+                      <span className="font-semibold">Next-Gen Speed</span>
+                    </div>
+                    <span className="text-purple-700 font-bold">{raw.connectivity.mobile.fiveG}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Based on regional signal density and operator reports.
+                  </p>
+                </div>
+              </Card>
+            </div>
+          </section>
+        )}
         <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
           <div className="p-6 border-b border-border">
             <h3 className="text-lg font-bold font-display flex items-center gap-2">

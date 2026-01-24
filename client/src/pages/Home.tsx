@@ -73,7 +73,7 @@ export default function Home() {
           <a href="/compare" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Compare Areas
           </a>
-          <a href="#about" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <a href="/how-it-works" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             How it works
           </a>
         </div>

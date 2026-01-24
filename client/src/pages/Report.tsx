@@ -12,13 +12,16 @@ import {
   AlertTriangle,
   Mail,
   Copy,
-  Check
+  Check,
+  Receipt,
+  ArrowRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { 
   Dialog,
   DialogContent,
@@ -306,6 +309,39 @@ export default function Report() {
             />
           </div>
         </section>
+
+        {/* Council Tax Section */}
+        {raw.councilTax && (
+          <section>
+            <Card className="bg-white border-none shadow-sm overflow-hidden">
+              <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                    <Receipt className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold">Local Council Tax</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Estimated band for properties in <span className="font-semibold">{report.postcode}</span>: 
+                      <span className="ml-1 text-foreground font-bold">Band {raw.councilTax.estimatedBand}</span>
+                    </p>
+                  </div>
+                </div>
+                <a 
+                  href={raw.councilTax.lookupUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-full md:w-auto"
+                >
+                  <Button variant="outline" className="w-full gap-2">
+                    Official Lookup
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </a>
+              </div>
+            </Card>
+          </section>
+        )}
 
         {/* Deep Dive Section */}
         <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">

@@ -281,7 +281,7 @@ export default function Report() {
                   loading="lazy"
                   allowFullScreen
                   referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.003}%2C${Number(report.lat)-0.003}%2C${Number(report.lng)+0.003}%2C${Number(report.lat)+0.003}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.01}%2C${Number(report.lat)-0.01}%2C${Number(report.lng)+0.01}%2C${Number(report.lat)+0.01}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
                 ></iframe>
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-primary" />

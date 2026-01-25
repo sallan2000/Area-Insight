@@ -24,11 +24,27 @@ import { LoadingModal } from "@/components/LoadingModal";
 export default function Compare() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [pc1, setPc1] = useState("");
-  const [pc2, setPc2] = useState("");
+  const [pc1, setPc1] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('pc1') || "";
+  });
+  const [pc2, setPc2] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('pc2') || "";
+  });
   const [ids, setIds] = useState<{id1?: number, id2?: number}>({});
   const [isCreating, setIsCreating] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+
+  // Automatically trigger comparison if postcodes are present in URL
+  useState(() => {
+    if (pc1 && pc2) {
+      setTimeout(() => {
+        const form = document.querySelector('form');
+        form?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }, 100);
+    }
+  });
 
   const { data: report1, isLoading: loading1 } = useAssessment(ids.id1!);
   const { data: report2, isLoading: loading2 } = useAssessment(ids.id2!);
@@ -188,7 +204,7 @@ export default function Compare() {
                       variant="outline" 
                       size="sm" 
                       className="text-primary hover:text-primary/80 font-medium"
-                      onClick={() => setLocation(`/report/${ids.id1}?from=compare`)}
+                      onClick={() => setLocation(`/report/${ids.id1}?from=compare&pc1=${encodeURIComponent(pc1)}&pc2=${encodeURIComponent(pc2)}`)}
                     >
                       View Full Report
                     </Button>
@@ -206,7 +222,7 @@ export default function Compare() {
                       variant="outline" 
                       size="sm" 
                       className="text-primary hover:text-primary/80 font-medium"
-                      onClick={() => setLocation(`/report/${ids.id2}?from=compare`)}
+                      onClick={() => setLocation(`/report/${ids.id2}?from=compare&pc1=${encodeURIComponent(pc1)}&pc2=${encodeURIComponent(pc2)}`)}
                     >
                       View Full Report
                     </Button>

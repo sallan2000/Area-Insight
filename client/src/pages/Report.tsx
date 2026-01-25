@@ -215,7 +215,12 @@ export default function Report() {
             <Button variant="ghost" size="icon" onClick={() => {
               const params = new URLSearchParams(window.location.search);
               if (params.get('from') === 'compare') {
-                setLocation("/compare");
+                const pc1 = params.get('pc1');
+                const pc2 = params.get('pc2');
+                const backUrl = pc1 && pc2 
+                  ? `/compare?pc1=${encodeURIComponent(pc1)}&pc2=${encodeURIComponent(pc2)}`
+                  : "/compare";
+                setLocation(backUrl);
               } else {
                 setLocation("/");
               }

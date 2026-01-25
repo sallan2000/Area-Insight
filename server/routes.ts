@@ -164,14 +164,20 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     connectivity: {
       broadband: [
         { name: "Zen Internet", trustpilotScore: 4.2, status: "Excellent", maxSpeed: "900Mbps" },
-        { name: "CommunityFibre", trustpilotScore: 4.1, status: "Excellent", maxSpeed: "3000Mbps" },
-        { name: "Hyperoptic", trustpilotScore: 4.0, status: "Excellent", maxSpeed: "1000Mbps" },
         { name: "TalkTalk", trustpilotScore: 2.8, status: "Average", maxSpeed: "900Mbps" },
         { name: "Vodafone", trustpilotScore: 2.4, status: "Poor", maxSpeed: "900Mbps" },
+        { name: "EE", trustpilotScore: 2.1, status: "Poor", maxSpeed: "900Mbps" },
         { name: "Virgin Media", trustpilotScore: 1.8, status: "Poor", maxSpeed: "1130Mbps" },
         { name: "Sky Broadband", trustpilotScore: 1.5, status: "Poor", maxSpeed: "900Mbps" },
         { name: "BT Broadband", trustpilotScore: 1.5, status: "Poor", maxSpeed: "900Mbps" }
-      ],
+      ].filter(p => {
+        // Filter based on typical availability logic
+        const isAltnetsArea = ['SW', 'W', 'NW', 'EC', 'WC'].some(pref => geoData.result.outcode.startsWith(pref));
+        const isVirginArea = Math.random() > 0.3; // Most urban areas have Virgin
+        if (p.name === "CommunityFibre" || p.name === "Hyperoptic") return isAltnetsArea;
+        if (p.name === "Virgin Media") return isVirginArea;
+        return true; // Openreach based providers are almost everywhere
+      }),
       mobile: {
         fourG: "Excellent",
         fiveG: "Good"

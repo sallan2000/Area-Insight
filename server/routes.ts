@@ -108,8 +108,22 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
   // In a real app, this would use a property-level API.
   const getEstimatedBand = (outcode: string) => {
     const highValuePrefixes = ['SW', 'W', 'NW', 'EC', 'WC', 'SE1', 'E1W'];
-    if (highValuePrefixes.some(p => outcode.startsWith(p))) return 'F-H';
-    return 'B-D';
+    if (highValuePrefixes.some(pref => outcode.startsWith(pref))) {
+      return 'G';
+    }
+    
+    // London inner but not elite
+    if (['N', 'E', 'S', 'W'].some(pref => outcode.startsWith(pref))) {
+      return 'E';
+    }
+    
+    // Generally affluent areas (commuter belt)
+    const affluentPrefixes = ['OX', 'GU', 'RG', 'SL', 'HP', 'AL', 'SG'];
+    if (affluentPrefixes.some(pref => outcode.startsWith(pref))) {
+      return 'D';
+    }
+    
+    return 'C';
   };
 
   const councilTaxBand = getEstimatedBand(geoData.result.outcode);

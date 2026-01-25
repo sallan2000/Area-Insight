@@ -195,6 +195,37 @@ export default function Compare() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:col-span-2">
+              <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative min-h-[300px]">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0, minHeight: '300px' }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report1.lng)-0.01}%2C${Number(report1.lat)-0.01}%2C${Number(report1.lng)+0.01}%2C${Number(report1.lat)+0.01}&layer=mapnik&marker=${report1.lat}%2C${report1.lng}`}
+                ></iframe>
+                <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
+                  <span className="text-xs font-bold">{report1.postcode}</span>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative min-h-[300px]">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0, minHeight: '300px' }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report2.lng)-0.01}%2C${Number(report2.lat)-0.01}%2C${Number(report2.lng)+0.01}%2C${Number(report2.lat)+0.01}&layer=mapnik&marker=${report2.lat}%2C${report2.lng}`}
+                ></iframe>
+                <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
+                  <span className="text-xs font-bold">{report2.postcode}</span>
+                </div>
+              </div>
+            </div>
+
             <div className="md:col-span-2 bg-white rounded-2xl border shadow-sm overflow-hidden">
               <table className="w-full">
                 <thead>

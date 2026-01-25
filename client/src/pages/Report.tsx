@@ -105,7 +105,10 @@ export default function Report() {
   };
 
   const overallScore = Math.round(
-    (scores.transport + scores.safety + scores.amenities + scores.schools) / 4
+    (0.25 * scores.transport) + 
+    (0.35 * Math.sqrt(scores.safety) * 10) + 
+    (0.20 * scores.schools) + 
+    (0.20 * scores.amenities)
   );
 
   const reportUrl = `${window.location.origin}/report/${id}`;
@@ -245,6 +248,11 @@ export default function Report() {
             <div className="mt-6 space-y-1">
               <p className="text-2xl font-bold text-foreground">{getOverallGrade(overallScore)}</p>
               <p className="text-sm text-muted-foreground">Compared to national average</p>
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                  0.25({Math.round(scores.transport)}) + 0.35√({Math.round(scores.safety)}) + 0.20({Math.round(scores.schools)}) + 0.20({Math.round(scores.amenities)}) = {overallScore}
+                </p>
+              </div>
             </div>
           </div>
 

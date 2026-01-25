@@ -309,7 +309,10 @@ export default function Report() {
                   <div className="space-y-3">
                     {raw.connectivity.broadband.map((provider: any) => (
                       <div key={provider.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                        <span className="font-medium text-sm">{provider.name}</span>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">{provider.name}</span>
+                          <span className="text-[10px] text-muted-foreground">Up to {provider.maxSpeed}</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-[10px] px-2 py-0.5 rounded-full ${
                             provider.trustpilotScore >= 4 ? 'bg-green-100 text-green-700' : 

@@ -163,13 +163,14 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     },
     connectivity: {
       broadband: [
-        { name: "Zen Internet", trustpilotScore: 4.2, status: "Excellent" },
-        { name: "TalkTalk", trustpilotScore: 2.8, status: "Average" },
-        { name: "Vodafone", trustpilotScore: 2.4, status: "Poor" },
-        { name: "EE", trustpilotScore: 2.1, status: "Poor" },
-        { name: "Virgin Media", trustpilotScore: 1.8, status: "Poor" },
-        { name: "Sky Broadband", trustpilotScore: 1.5, status: "Poor" },
-        { name: "BT Broadband", trustpilotScore: 1.5, status: "Poor" }
+        { name: "Zen Internet", trustpilotScore: 4.2, status: "Excellent", maxSpeed: "900Mbps" },
+        { name: "CommunityFibre", trustpilotScore: 4.1, status: "Excellent", maxSpeed: "3000Mbps" },
+        { name: "Hyperoptic", trustpilotScore: 4.0, status: "Excellent", maxSpeed: "1000Mbps" },
+        { name: "TalkTalk", trustpilotScore: 2.8, status: "Average", maxSpeed: "900Mbps" },
+        { name: "Vodafone", trustpilotScore: 2.4, status: "Poor", maxSpeed: "900Mbps" },
+        { name: "Virgin Media", trustpilotScore: 1.8, status: "Poor", maxSpeed: "1130Mbps" },
+        { name: "Sky Broadband", trustpilotScore: 1.5, status: "Poor", maxSpeed: "900Mbps" },
+        { name: "BT Broadband", trustpilotScore: 1.5, status: "Poor", maxSpeed: "900Mbps" }
       ],
       mobile: {
         fourG: "Excellent",

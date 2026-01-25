@@ -117,9 +117,9 @@ export default function Compare() {
     return ultra ? ultra.speed : "N/A";
   };
 
-  const getMobileValue = (raw: any) => {
+  const getMobile5GValue = (raw: any) => {
     if (!raw?.connectivity?.mobile) return "N/A";
-    return `${raw.connectivity.mobile.fourG} (4G)`;
+    return `${raw.connectivity.mobile.fiveG} (5G)`;
   };
 
   return (
@@ -212,7 +212,8 @@ export default function Compare() {
                     { name: 'Amenities', key: 'amenities', icon: Store, type: 'score' },
                     { name: 'Council Tax', key: 'councilTax', icon: Receipt, type: 'text', getValue: (r: any) => r?.councilTax?.estimatedBand ? `Band ${r.councilTax.estimatedBand}` : 'N/A' },
                     { name: 'Broadband', key: 'broadband', icon: Wifi, type: 'text', getValue: getConnectivityValue },
-                    { name: '4G Signal', key: 'mobile', icon: Signal, type: 'text', getValue: getMobileValue },
+                    { name: '4G Signal', key: 'mobile4g', icon: Signal, type: 'text', getValue: (r: any) => r?.connectivity?.mobile?.fourG ? `${r.connectivity.mobile.fourG} (4G)` : 'N/A' },
+                    { name: '5G Signal', key: 'mobile5g', icon: Signal, type: 'text', getValue: (r: any) => r?.connectivity?.mobile?.fiveG ? `${r.connectivity.mobile.fiveG} (5G)` : 'N/A' },
                   ].map((cat) => {
                     const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);
                     const val2 = cat.type === 'score' ? report2Scores[cat.key] : cat.getValue?.(raw2);

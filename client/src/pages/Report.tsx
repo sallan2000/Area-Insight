@@ -248,10 +248,25 @@ export default function Report() {
             <div className="mt-6 space-y-1">
               <p className="text-2xl font-bold text-foreground">{getOverallGrade(overallScore)}</p>
               <p className="text-sm text-muted-foreground">Compared to national average</p>
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
-                  0.25({Math.round(scores.transport)}) + 0.35√({Math.round(scores.safety)}) + 0.20({Math.round(scores.schools)}) + 0.20({Math.round(scores.amenities)}) = {overallScore}
-                </p>
+              <div className="mt-4 pt-4 border-t border-border w-full">
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Calculation</p>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-border">
+                    <p className="text-sm font-mono text-foreground leading-relaxed break-words">
+                      <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
+                      <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
+                      <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
+                      <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
+                      <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground font-medium uppercase pt-1">
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Tr: Transport</div>
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Sc: Schools</div>
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Am: Amenities</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

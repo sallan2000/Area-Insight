@@ -304,26 +304,27 @@ export default function Report() {
                 <Card className="p-6">
                   <h4 className="font-bold mb-4 flex items-center gap-2">
                     <Wifi className="w-4 h-4" />
-                    Broadband Providers
+                    Broadband Availability
                   </h4>
                   <div className="space-y-3">
-                    {raw.connectivity.broadband.map((provider: any) => (
-                      <div key={provider.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                    {raw.connectivity.broadband.map((item: any) => (
+                      <div key={item.type} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
                         <div className="flex flex-col">
-                          <span className="font-medium text-sm">{provider.name}</span>
-                          <span className="text-[10px] text-muted-foreground">Up to {provider.maxSpeed}</span>
+                          <span className="font-medium text-sm">{item.type}</span>
+                          <span className="text-[10px] text-muted-foreground">Download up to {item.speed}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                            provider.trustpilotScore >= 4 ? 'bg-green-100 text-green-700' : 
-                            provider.trustpilotScore >= 2.5 ? 'bg-yellow-100 text-yellow-700' : 
-                            'bg-red-100 text-red-700'
+                            item.availability === 'Likely' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                           }`}>
-                            {provider.trustpilotScore} ★
+                            {item.availability}
                           </span>
                         </div>
                       </div>
                     ))}
+                    <p className="text-[10px] text-muted-foreground mt-2">
+                      Source: Based on Ofcom coverage data for this area.
+                    </p>
                   </div>
                 </Card>
 

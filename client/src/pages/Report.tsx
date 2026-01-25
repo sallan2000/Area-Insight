@@ -344,7 +344,7 @@ export default function Report() {
                     <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/50 border border-purple-100">
                       <div className="flex items-center gap-3 text-sm">
                         <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
-                        <span className="font-semibold">5G Signal Quality</span>
+                        <span className="font-semibold">5G Coverage</span>
                       </div>
                       <span className="text-purple-700 font-bold text-sm">{raw.connectivity.mobile.fiveG}</span>
                     </div>

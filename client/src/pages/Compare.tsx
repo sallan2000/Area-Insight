@@ -260,14 +260,12 @@ export default function Compare() {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : ''}`}>{val1}</span>
-                            {win === 1 && <Check className="h-4 w-4 text-emerald-500" />}
+                            <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : (win === 2 ? 'text-red-600' : '')}`}>{val1}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : ''}`}>{val2}</span>
-                            {win === 2 && <Check className="h-4 w-4 text-emerald-500" />}
+                            <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : (win === 1 ? 'text-red-600' : '')}`}>{val2}</span>
                           </div>
                         </td>
                       </tr>

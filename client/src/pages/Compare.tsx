@@ -182,7 +182,17 @@ export default function Compare() {
                   <div className={`text-5xl font-black ${getWinner(report1Scores.total, report2Scores.total) === 1 ? 'text-primary' : 'text-muted-foreground'}`}>
                     {report1Scores.total}
                   </div>
-                  {getWinner(report1Scores.total, report2Scores.total) === 1 && <Badge className="bg-emerald-500">WINNER</Badge>}
+                  <div className="flex flex-col items-center gap-2">
+                    {getWinner(report1Scores.total, report2Scores.total) === 1 && <Badge className="bg-emerald-500">WINNER</Badge>}
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      className="text-primary hover:text-primary/80 font-medium"
+                      onClick={() => setLocation(`/report/${ids.id1}`)}
+                    >
+                      View Full Report
+                    </Button>
+                  </div>
                 </div>
                 <div className="text-2xl font-bold text-muted-foreground/30">VS</div>
                 <div className="flex-1 text-center space-y-4">
@@ -190,7 +200,17 @@ export default function Compare() {
                   <div className={`text-5xl font-black ${getWinner(report1Scores.total, report2Scores.total) === 2 ? 'text-primary' : 'text-muted-foreground'}`}>
                     {report2Scores.total}
                   </div>
-                  {getWinner(report1Scores.total, report2Scores.total) === 2 && <Badge className="bg-emerald-500">WINNER</Badge>}
+                  <div className="flex flex-col items-center gap-2">
+                    {getWinner(report1Scores.total, report2Scores.total) === 2 && <Badge className="bg-emerald-500">WINNER</Badge>}
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      className="text-primary hover:text-primary/80 font-medium"
+                      onClick={() => setLocation(`/report/${ids.id2}`)}
+                    >
+                      View Full Report
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

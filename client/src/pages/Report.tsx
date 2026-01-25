@@ -212,7 +212,14 @@ export default function Report() {
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/")}>
+            <Button variant="ghost" size="icon" onClick={() => {
+              const params = new URLSearchParams(window.location.search);
+              if (params.get('from') === 'compare') {
+                setLocation("/compare");
+              } else {
+                setLocation("/");
+              }
+            }}>
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>

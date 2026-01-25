@@ -185,10 +185,10 @@ export default function Compare() {
                   <div className="flex flex-col items-center gap-2">
                     {getWinner(report1Scores.total, report2Scores.total) === 1 && <Badge className="bg-emerald-500">WINNER</Badge>}
                     <Button 
-                      variant="link" 
+                      variant="outline" 
                       size="sm" 
                       className="text-primary hover:text-primary/80 font-medium"
-                      onClick={() => setLocation(`/report/${ids.id1}`)}
+                      onClick={() => setLocation(`/report/${ids.id1}?from=compare`)}
                     >
                       View Full Report
                     </Button>
@@ -203,10 +203,10 @@ export default function Compare() {
                   <div className="flex flex-col items-center gap-2">
                     {getWinner(report1Scores.total, report2Scores.total) === 2 && <Badge className="bg-emerald-500">WINNER</Badge>}
                     <Button 
-                      variant="link" 
+                      variant="outline" 
                       size="sm" 
                       className="text-primary hover:text-primary/80 font-medium"
-                      onClick={() => setLocation(`/report/${ids.id2}`)}
+                      onClick={() => setLocation(`/report/${ids.id2}?from=compare`)}
                     >
                       View Full Report
                     </Button>

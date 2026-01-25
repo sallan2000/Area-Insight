@@ -10,6 +10,9 @@ import {
   GraduationCap,
   Store,
   TrendingUp,
+  Receipt,
+  Wifi,
+  Signal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -105,6 +108,19 @@ export default function Compare() {
 
   const report1Scores = report1?.scores as any;
   const report2Scores = report2?.scores as any;
+  const raw1 = report1?.rawMetrics as any;
+  const raw2 = report2?.rawMetrics as any;
+
+  const getConnectivityValue = (raw: any) => {
+    if (!raw?.connectivity?.broadband) return "N/A";
+    const ultra = raw.connectivity.broadband.find((b: any) => b.type === "Ultrafast");
+    return ultra ? ultra.speed : "N/A";
+  };
+
+  const getMobileValue = (raw: any) => {
+    if (!raw?.connectivity?.mobile) return "N/A";
+    return `${raw.connectivity.mobile.fourG} (4G)`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -190,29 +206,35 @@ export default function Compare() {
                 </thead>
                 <tbody className="divide-y">
                   {[
-                    { name: 'Safety', key: 'safety', icon: Shield },
-                    { name: 'Transport', key: 'transport', icon: Bus },
-                    { name: 'Schools', key: 'schools', icon: GraduationCap },
-                    { name: 'Amenities', key: 'amenities', icon: Store },
+                    { name: 'Safety', key: 'safety', icon: Shield, type: 'score' },
+                    { name: 'Transport', key: 'transport', icon: Bus, type: 'score' },
+                    { name: 'Schools', key: 'schools', icon: GraduationCap, type: 'score' },
+                    { name: 'Amenities', key: 'amenities', icon: Store, type: 'score' },
+                    { name: 'Council Tax', key: 'councilTax', icon: Receipt, type: 'text', getValue: (r: any) => r?.councilTax?.estimatedBand ? `Band ${r.councilTax.estimatedBand}` : 'N/A' },
+                    { name: 'Broadband', key: 'broadband', icon: Wifi, type: 'text', getValue: getConnectivityValue },
+                    { name: '4G Signal', key: 'mobile', icon: Signal, type: 'text', getValue: getMobileValue },
                   ].map((cat) => {
-                    const win = getWinner(report1Scores[cat.key], report2Scores[cat.key]);
+                    const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);
+                    const val2 = cat.type === 'score' ? report2Scores[cat.key] : cat.getValue?.(raw2);
+                    const win = cat.type === 'score' ? getWinner(val1, val2) : 0;
+
                     return (
-                      <tr key={cat.key} className="hover:bg-gray-50/50 transition-colors">
+                      <tr key={cat.name} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <cat.icon className="h-5 w-5 text-muted-foreground" />
+                            <cat.icon className="h-5 w-5 text-primary" />
                             <span className="font-semibold">{cat.name}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : ''}`}>{report1Scores[cat.key]}</span>
+                            <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : ''}`}>{val1}</span>
                             {win === 1 && <Check className="h-4 w-4 text-emerald-500" />}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : ''}`}>{report2Scores[cat.key]}</span>
+                            <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : ''}`}>{val2}</span>
                             {win === 2 && <Check className="h-4 w-4 text-emerald-500" />}
                           </div>
                         </td>

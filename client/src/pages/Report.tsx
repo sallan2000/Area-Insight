@@ -236,7 +236,7 @@ export default function Report() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Overview Section */}
+        {/* Map Section */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Score Card */}
           <div className="bg-white rounded-2xl p-8 shadow-sm border border-border flex flex-col items-center justify-center text-center lg:col-span-1">
@@ -248,166 +248,155 @@ export default function Report() {
             </div>
           </div>
 
-          {/* Map Section */}
-          <div className="bg-white rounded-2xl p-1 shadow-sm border border-border lg:col-span-2 overflow-hidden relative group">
-            <div className="w-full h-full min-h-[400px]">
-              <iframe
-                width="100%"
-                height="100%"
-                style={{ border: 0, minHeight: '400px' }}
-                loading="lazy"
-                allowFullScreen
-                referrerPolicy="no-referrer-when-downgrade"
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.003}%2C${Number(report.lat)-0.003}%2C${Number(report.lng)+0.003}%2C${Number(report.lat)+0.003}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
-              ></iframe>
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-primary" />
-                <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative group">
+              <div className="w-full h-full min-h-[400px]">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0, minHeight: '400px' }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.003}%2C${Number(report.lat)-0.003}%2C${Number(report.lng)+0.003}%2C${Number(report.lat)+0.003}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
+                ></iframe>
+                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
 
-        {/* Detailed Metrics Grid */}
-        <section>
-          <h3 className="text-xl font-display font-bold mb-6 px-1">Performance Breakdown</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <MetricCard
-              title="Transport"
-              score={scores.transport}
-              icon={<Bus className="w-6 h-6" />}
-              description={`${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
-              status={getOverallGrade(scores.transport)}
-              isActive={activeTab === 'transport'}
-              onClick={() => setActiveTab('transport')}
-            />
-            <MetricCard
-              title="Safety"
-              score={scores.safety}
-              icon={<Shield className="w-6 h-6" />}
-              description={`${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
-              status={getOverallGrade(scores.safety)}
-              trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
-              isActive={activeTab === 'safety'}
-              onClick={() => setActiveTab('safety')}
-            />
-            <MetricCard
-              title="Schools"
-              score={scores.schools}
-              icon={<GraduationCap className="w-6 h-6" />}
-              description={`${raw.schools?.count || 0} schools nearby`}
-              status={getOverallGrade(scores.schools)}
-              isActive={activeTab === 'schools'}
-              onClick={() => setActiveTab('schools')}
-            />
-            <MetricCard
-              title="Amenities"
-              score={scores.amenities}
-              icon={<Store className="w-6 h-6" />}
-              description={`${raw.amenities?.totalCount || 0} shops, parks, and services`}
-              status={getOverallGrade(scores.amenities)}
-              isActive={activeTab === 'amenities'}
-              onClick={() => setActiveTab('amenities')}
-            />
-          </div>
-        </section>
-
-        {/* Council Tax Section */}
-        {raw.councilTax && (
-          <section>
-            <Card className="bg-white border-none shadow-sm overflow-hidden">
-              <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
-                    <Receipt className="w-6 h-6" />
+            {/* Council Tax Section (Directly under map) */}
+            {raw.councilTax && (
+              <Card className="bg-white border-none shadow-sm overflow-hidden">
+                <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                      <Receipt className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold">Local Council Tax</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Estimated band for properties in <span className="font-semibold">{report.postcode}</span>: 
+                        <span className="ml-1 text-foreground font-bold">Band {raw.councilTax.estimatedBand}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold">Local Council Tax</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Estimated band for properties in <span className="font-semibold">{report.postcode}</span>: 
-                      <span className="ml-1 text-foreground font-bold">Band {raw.councilTax.estimatedBand}</span>
-                    </p>
-                  </div>
+                  <a 
+                    href={raw.councilTax.lookupUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-full md:w-auto"
+                  >
+                    <Button variant="outline" className="w-full gap-2">
+                      Official Lookup
+                      <ArrowRight className="w-4 h-4" />
+                    </Button>
+                  </a>
                 </div>
-                <a 
-                  href={raw.councilTax.lookupUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-full md:w-auto"
-                >
-                  <Button variant="outline" className="w-full gap-2">
-                    Official Lookup
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </a>
-              </div>
-            </Card>
-          </section>
-        )}
+              </Card>
+            )}
 
-        {/* Connectivity Section */}
-        {raw.connectivity && (
-          <section className="mt-8">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Wifi className="w-5 h-5 text-primary" />
-              Digital Connectivity
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="p-6">
-                <h4 className="font-bold mb-4 flex items-center gap-2">
-                  <Wifi className="w-4 h-4" />
-                  Broadband Providers
-                </h4>
-                <div className="space-y-3">
-                  {raw.connectivity.broadband.map((provider: any) => (
-                    <div key={provider.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                      <span className="font-medium">{provider.name}</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          provider.trustpilotScore >= 4 ? 'bg-green-100 text-green-700' : 
-                          provider.trustpilotScore >= 2.5 ? 'bg-yellow-100 text-yellow-700' : 
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {provider.trustpilotScore} ★
-                        </span>
+            {/* Connectivity Section (Directly under map) */}
+            {raw.connectivity && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="p-6">
+                  <h4 className="font-bold mb-4 flex items-center gap-2">
+                    <Wifi className="w-4 h-4" />
+                    Broadband Providers
+                  </h4>
+                  <div className="space-y-3">
+                    {raw.connectivity.broadband.map((provider: any) => (
+                      <div key={provider.name} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                        <span className="font-medium text-sm">{provider.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                            provider.trustpilotScore >= 4 ? 'bg-green-100 text-green-700' : 
+                            provider.trustpilotScore >= 2.5 ? 'bg-yellow-100 text-yellow-700' : 
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {provider.trustpilotScore} ★
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                  <p className="text-[10px] text-muted-foreground mt-2">
-                    Ranked by Trustpilot scores (2024-2025 data).
-                  </p>
-                </div>
-              </Card>
+                    ))}
+                  </div>
+                </Card>
 
-              <Card className="p-6">
-                <h4 className="font-bold mb-4 flex items-center gap-2">
-                  <Signal className="w-4 h-4" />
-                  Mobile Signal Quality
-                </h4>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50/50 border border-blue-100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
-                      <span className="font-semibold">LTE Coverage</span>
+                <Card className="p-6">
+                  <h4 className="font-bold mb-4 flex items-center gap-2">
+                    <Signal className="w-4 h-4" />
+                    Mobile Signal Quality
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
+                      <div className="flex items-center gap-3 text-sm">
+                        <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
+                        <span className="font-semibold">LTE Coverage</span>
+                      </div>
+                      <span className="text-blue-700 font-bold text-sm">{raw.connectivity.mobile.fourG}</span>
                     </div>
-                    <span className="text-blue-700 font-bold">{raw.connectivity.mobile.fourG}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-purple-50/50 border border-purple-100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
-                      <span className="font-semibold">Next-Gen Speed</span>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/50 border border-purple-100">
+                      <div className="flex items-center gap-3 text-sm">
+                        <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
+                        <span className="font-semibold">Next-Gen Speed</span>
+                      </div>
+                      <span className="text-purple-700 font-bold text-sm">{raw.connectivity.mobile.fiveG}</span>
                     </div>
-                    <span className="text-purple-700 font-bold">{raw.connectivity.mobile.fiveG}</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Based on regional signal density and operator reports.
-                  </p>
-                </div>
-              </Card>
+                </Card>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Detailed Metrics Grid & Analysis Grouped Together */}
+        <section className="space-y-8">
+          <div>
+            <h3 className="text-xl font-display font-bold mb-6 px-1">Performance Breakdown</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <MetricCard
+                title="Transport"
+                score={scores.transport}
+                icon={<Bus className="w-6 h-6" />}
+                description={`${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
+                status={getOverallGrade(scores.transport)}
+                isActive={activeTab === 'transport'}
+                onClick={() => setActiveTab('transport')}
+              />
+              <MetricCard
+                title="Safety"
+                score={scores.safety}
+                icon={<Shield className="w-6 h-6" />}
+                description={`${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
+                status={getOverallGrade(scores.safety)}
+                trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
+                isActive={activeTab === 'safety'}
+                onClick={() => setActiveTab('safety')}
+              />
+              <MetricCard
+                title="Schools"
+                score={scores.schools}
+                icon={<GraduationCap className="w-6 h-6" />}
+                description={`${raw.schools?.count || 0} schools nearby`}
+                status={getOverallGrade(scores.schools)}
+                isActive={activeTab === 'schools'}
+                onClick={() => setActiveTab('schools')}
+              />
+              <MetricCard
+                title="Amenities"
+                score={scores.amenities}
+                icon={<Store className="w-6 h-6" />}
+                description={`${raw.amenities?.totalCount || 0} shops, parks, and services`}
+                status={getOverallGrade(scores.amenities)}
+                isActive={activeTab === 'amenities'}
+                onClick={() => setActiveTab('amenities')}
+              />
             </div>
-          </section>
-        )}
-        <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
+          </div>
+
+          <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
           <div className="p-6 border-b border-border">
             <h3 className="text-lg font-bold font-display flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
@@ -552,7 +541,8 @@ export default function Report() {
             </div>
           </div>
         </section>
-      </main>
-    </div>
-  );
+      </section>
+    </main>
+  </div>
+);
 }

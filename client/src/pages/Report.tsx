@@ -337,14 +337,14 @@ export default function Report() {
                     <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
                       <div className="flex items-center gap-3 text-sm">
                         <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
-                        <span className="font-semibold">LTE Coverage</span>
+                        <span className="font-semibold">4G Coverage</span>
                       </div>
                       <span className="text-blue-700 font-bold text-sm">{raw.connectivity.mobile.fourG}</span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/50 border border-purple-100">
                       <div className="flex items-center gap-3 text-sm">
                         <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
-                        <span className="font-semibold">Next-Gen Speed</span>
+                        <span className="font-semibold">5G Signal Quality</span>
                       </div>
                       <span className="text-purple-700 font-bold text-sm">{raw.connectivity.mobile.fiveG}</span>
                     </div>

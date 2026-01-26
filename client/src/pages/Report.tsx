@@ -460,7 +460,7 @@ export default function Report() {
           <div className="p-6 border-b border-border">
             <h3 className="text-lg font-bold font-display flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
-              Detailed Analysis: <span className="capitalize">{activeTab}</span>
+              Detailed Analysis: <span className="capitalize">{activeTab || ''}</span>
             </h3>
           </div>
           
@@ -470,7 +470,7 @@ export default function Report() {
                 <div className="p-6 bg-gray-50 rounded-xl border border-border">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
-                    <span className="text-2xl font-bold text-primary">{Math.round(scores[activeTab])}/100</span>
+                    <span className="text-2xl font-bold text-primary">{activeTab ? Math.round(scores[activeTab]) : 0}/100</span>
                   </div>
                   <div className="prose prose-sm text-muted-foreground">
                     <p>
@@ -593,6 +593,11 @@ export default function Report() {
                     {activeTab === 'safety' && (
                       <li className="text-sm italic text-muted-foreground mt-4">
                         Due to privacy, specific crime locations are restricted to street-level anonymized data.
+                      </li>
+                    )}
+                    {!activeTab && (
+                      <li className="text-sm italic text-muted-foreground mt-4">
+                        Select a category above to view detailed metrics and analysis.
                       </li>
                     )}
                   </ul>

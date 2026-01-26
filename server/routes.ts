@@ -75,12 +75,12 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
   const primarySchools = getNearest(allSchools.filter((s: any) => {
     const name = (s.tags.name || "").toLowerCase();
     return primaryKeywords.some(k => name.includes(k));
-  }), 5);
+  }), 1000);
 
   const secondarySchools = getNearest(allSchools.filter((s: any) => {
     const name = (s.tags.name || "").toLowerCase();
     return !primaryKeywords.some(k => name.includes(k));
-  }), 5);
+  }), 1000);
   
   const amenitiesList = [
     ...localAmenitiesElements

@@ -323,7 +323,7 @@ export default function Report() {
               </div>
             </div>
 
-            {/* Council Tax Section (Directly under map) */}
+            {/* Council Tax Section */}
             {raw.councilTax && (
               <Card className="bg-white border-none shadow-sm overflow-hidden">
                 <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -352,61 +352,6 @@ export default function Report() {
                   </a>
                 </div>
               </Card>
-            )}
-
-            {/* Connectivity Section (Directly under map) */}
-            {raw.connectivity && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="p-6">
-                  <h4 className="font-bold mb-4 flex items-center gap-2">
-                    <Wifi className="w-4 h-4" />
-                    Broadband Availability
-                  </h4>
-                  <div className="space-y-3">
-                    {raw.connectivity.broadband.map((item: any) => (
-                      <div key={item.type} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-sm">{item.type}</span>
-                          <span className="text-[10px] text-muted-foreground">Download up to {item.speed}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                            item.availability === 'Likely' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {item.availability}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    <p className="text-[10px] text-muted-foreground mt-2">
-                      Source: Based on Ofcom coverage data for this area.
-                    </p>
-                  </div>
-                </Card>
-
-                <Card className="p-6">
-                  <h4 className="font-bold mb-4 flex items-center gap-2">
-                    <Signal className="w-4 h-4" />
-                    Mobile Signal Quality
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
-                      <div className="flex items-center gap-3 text-sm">
-                        <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
-                        <span className="font-semibold">4G Coverage</span>
-                      </div>
-                      <span className="text-blue-700 font-bold text-sm">{raw.connectivity.mobile.fourG}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/50 border border-purple-100">
-                      <div className="flex items-center gap-3 text-sm">
-                        <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
-                        <span className="font-semibold">5G Coverage</span>
-                      </div>
-                      <span className="text-purple-700 font-bold text-sm">{raw.connectivity.mobile.fiveG}</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
             )}
           </div>
         </section>
@@ -457,157 +402,214 @@ export default function Report() {
           </div>
 
           <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
-          <div className="p-6 border-b border-border">
-            <h3 className="text-lg font-bold font-display flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              Detailed Analysis: <span className="capitalize">{activeTab || ''}</span>
-            </h3>
-          </div>
-          
-          <div className="p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div className="p-6 bg-gray-50 rounded-xl border border-border">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
-                    <span className="text-2xl font-bold text-primary">{activeTab ? Math.round(scores[activeTab]) : 0}/100</span>
+            <div className="p-6 border-b border-border">
+              <h3 className="text-lg font-bold font-display flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Detailed Analysis: <span className="capitalize">{activeTab || ''}</span>
+              </h3>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <div className="p-6 bg-gray-50 rounded-xl border border-border">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
+                      <span className="text-2xl font-bold text-primary">{activeTab ? Math.round(scores[activeTab]) : 0}/100</span>
+                    </div>
+                    <div className="prose prose-sm text-muted-foreground">
+                      <p>
+                        The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
+                      </p>
+                    </div>
                   </div>
-                  <div className="prose prose-sm text-muted-foreground">
-                    <p>
-                      The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
-                    </p>
+                  
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
+                    <div className="p-4 bg-gray-50 rounded-xl border border-border">
+                      <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
+                      <p className="text-xl font-bold text-foreground">
+                        {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
+                         activeTab === 'transport' ? `${raw.transport?.busStopCount + raw.transport?.stationCount} stops/stations` : 
+                         activeTab === 'schools' ? `${raw.schools?.count} educational facilities` : 
+                         `${raw.amenities?.totalCount} local services`}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
-                  <div className="p-4 bg-gray-50 rounded-xl border border-border">
-                    <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
-                    <p className="text-xl font-bold text-foreground">
-                      {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
-                       activeTab === 'transport' ? `${raw.transport?.busStopCount + raw.transport?.stationCount} stops/stations` : 
-                       activeTab === 'schools' ? `${raw.schools?.count} educational facilities` : 
-                       `${raw.amenities?.totalCount} local services`}
-                    </p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="space-y-4">
-                <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Nearby Highlights</h4>
-                <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
-                  <ul className="space-y-2">
-                    {activeTab === 'safety' && raw.safetyBreakdown && (
-                      <div className="space-y-3">
-                        {[
-                          { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
-                          { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
-                          { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
-                          { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
-                          { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
-                        ].map((item) => (
-                          <div key={item.label} className="space-y-1">
-                            <div className="flex justify-between text-xs font-medium">
-                              <span>{item.label}</span>
-                              <span>{item.value}</span>
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Nearby Highlights</h4>
+                  <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
+                    <ul className="space-y-2">
+                      {activeTab === 'safety' && raw.safetyBreakdown && (
+                        <div className="space-y-3">
+                          {[
+                            { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
+                            { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
+                            { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
+                            { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
+                            { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
+                          ].map((item) => (
+                            <div key={item.label} className="space-y-1">
+                              <div className="flex justify-between text-xs font-medium">
+                                <span>{item.label}</span>
+                                <span>{item.value}</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div 
+                                  className={`${item.color} h-1.5 rounded-full`} 
+                                  style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-1.5">
-                              <div 
-                                className={`${item.color} h-1.5 rounded-full`} 
-                                style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
-                              />
-                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {activeTab === 'transport' && (
+                        <>
+                          {raw.transport?.stations?.map((s: any, i: number) => (
+                            <li key={i} className="text-sm flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                <span className="font-medium">Station:</span> {s.name || s}
+                              </div>
+                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                            </li>
+                          ))}
+                          {raw.transport?.busStops?.map((s: any, i: number) => (
+                            <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                                <span className="font-medium">Bus Stop:</span> {s.name || s}
+                              </div>
+                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                            </li>
+                          ))}
+                        </>
+                      )}
+                      {activeTab === 'schools' && (
+                        <div className="space-y-6">
+                          <div>
+                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
+                            <ul className="space-y-2">
+                              {raw.schools?.primaryList?.map((s: any, i: number) => (
+                                <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                    <span className="font-medium">{s.name}</span>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">{s.distance}km</span>
+                                </li>
+                              ))}
+                              {(!raw.schools?.primaryList || raw.schools.primaryList.length === 0) && (
+                                <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
+                              )}
+                            </ul>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                    {activeTab === 'transport' && (
-                      <>
-                        {raw.transport?.stations?.map((s: any, i: number) => (
-                          <li key={i} className="text-sm flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                              <span className="font-medium">Station:</span> {s.name || s}
-                            </div>
-                            {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                          </li>
-                        ))}
-                        {raw.transport?.busStops?.map((s: any, i: number) => (
-                          <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                              <span className="font-medium">Bus Stop:</span> {s.name || s}
-                            </div>
-                            {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                          </li>
-                        ))}
-                      </>
-                    )}
-                    {activeTab === 'schools' && (
-                      <div className="space-y-6">
-                        <div>
-                          <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
-                          <ul className="space-y-2">
-                            {raw.schools?.primaryList?.map((s: any, i: number) => (
-                              <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                  <span className="font-medium">{s.name}</span>
-                                </div>
-                                <span className="text-xs text-muted-foreground">{s.distance}km</span>
-                              </li>
-                            ))}
-                            {(!raw.schools?.primaryList || raw.schools.primaryList.length === 0) && (
-                              <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
-                            )}
-                          </ul>
+                          <div>
+                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
+                            <ul className="space-y-2">
+                              {raw.schools?.secondaryList?.map((s: any, i: number) => (
+                                <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                    <span className="font-medium">{s.name}</span>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">{s.distance}km</span>
+                                </li>
+                              ))}
+                              {(!raw.schools?.secondaryList || raw.schools.secondaryList.length === 0) && (
+                                <li className="text-sm text-muted-foreground italic">No secondary or higher education facilities identified nearby.</li>
+                              )}
+                            </ul>
+                          </div>
                         </div>
-                        <div>
-                          <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
-                          <ul className="space-y-2">
-                            {raw.schools?.secondaryList?.map((s: any, i: number) => (
-                              <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                  <span className="font-medium">{s.name}</span>
-                                </div>
-                                <span className="text-xs text-muted-foreground">{s.distance}km</span>
-                              </li>
-                            ))}
-                            {(!raw.schools?.secondaryList || raw.schools.secondaryList.length === 0) && (
-                              <li className="text-sm text-muted-foreground italic">No secondary or higher education facilities identified nearby.</li>
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    )}
-                    {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
-                      <li key={i} className="text-sm flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                          <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
-                        </div>
-                        {a.distance !== undefined && <span className="text-xs text-muted-foreground">{a.distance}km</span>}
-                      </li>
-                    ))}
-                    {activeTab === 'safety' && (
-                      <li className="text-sm italic text-muted-foreground mt-4">
-                        Due to privacy, specific crime locations are restricted to street-level anonymized data.
-                      </li>
-                    )}
-                    {!activeTab && (
-                      <li className="text-sm italic text-muted-foreground mt-4">
-                        Select a category above to view detailed metrics and analysis.
-                      </li>
-                    )}
-                  </ul>
+                      )}
+                      {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
+                        <li key={i} className="text-sm flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                            <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
+                          </div>
+                          {a.distance !== undefined && <span className="text-xs text-muted-foreground">{a.distance}km</span>}
+                        </li>
+                      ))}
+                      {activeTab === 'safety' && (
+                        <li className="text-sm italic text-muted-foreground mt-4">
+                          Due to privacy, specific crime locations are restricted to street-level anonymized data.
+                        </li>
+                      )}
+                      {!activeTab && (
+                        <li className="text-sm italic text-muted-foreground mt-4">
+                          Select a category above to view detailed metrics and analysis.
+                        </li>
+                      )}
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         </section>
-      </section>
-    </main>
-  </div>
-);
+
+        {/* Connectivity Section (Bottom) */}
+        {raw.connectivity && (
+          <div className="pt-8 border-t border-border">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="p-6 shadow-sm">
+                <h4 className="font-bold mb-4 flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-primary" />
+                  Broadband Availability
+                </h4>
+                <div className="space-y-3">
+                  {raw.connectivity.broadband.map((item: any) => (
+                    <div key={item.type} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                      <div className="flex flex-col">
+                        <span className="font-medium text-sm">{item.type}</span>
+                        <span className="text-[10px] text-muted-foreground">Download up to {item.speed}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                          item.availability === 'Likely' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {item.availability}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground mt-2 italic">
+                    Source: Based on Ofcom coverage data for this area.
+                  </p>
+                </div>
+              </Card>
+
+              <Card className="p-6 shadow-sm">
+                <h4 className="font-bold mb-4 flex items-center gap-2">
+                  <Signal className="w-4 h-4 text-primary" />
+                  Coverage
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
+                    <div className="flex items-center gap-3 text-sm">
+                      <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
+                      <span className="font-semibold">4G Coverage</span>
+                    </div>
+                    <span className="text-blue-700 font-bold text-sm">{raw.connectivity.mobile.fourG}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/50 border border-purple-100">
+                    <div className="flex items-center gap-3 text-sm">
+                      <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
+                      <span className="font-semibold">5G Coverage</span>
+                    </div>
+                    <span className="text-purple-700 font-bold text-sm">{raw.connectivity.mobile.fiveG}</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }

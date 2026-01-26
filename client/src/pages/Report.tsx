@@ -44,7 +44,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // Mock data for charts since real historical API might be limited
 const trendData = [
@@ -60,7 +60,28 @@ export default function Report() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { data: report, isLoading, error } = useAssessment(Number(id));
-  const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities'>('safety');
+  const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
+
+  // Set initial active tab based on scores and crime count
+  useEffect(() => {
+    if (report && !activeTab) {
+      const scores = report.scores as any;
+      const raw = report.rawMetrics as any;
+      
+      const tabOptions: ('safety' | 'transport' | 'schools' | 'amenities')[] = ['safety', 'transport', 'schools', 'amenities'];
+      // Filter out null scores if any and sort
+      const sortedTabs = [...tabOptions].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));
+      
+      let initialTab = sortedTabs[0];
+      // If safety is the top score but there are 0 incidents, promote the 2nd highest score
+      if (initialTab === 'safety' && raw.crimeCount === 0) {
+        initialTab = sortedTabs[1];
+      }
+      
+      setActiveTab(initialTab);
+    }
+  }, [report, activeTab]);
+
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -531,9 +552,9 @@ export default function Report() {
                               <li key={i} className="text-sm flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                  {s.name || s}
+                                  <span className="font-medium">{s.name}</span>
                                 </div>
-                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                                <span className="text-xs text-muted-foreground">{s.distance}km</span>
                               </li>
                             ))}
                             {(!raw.schools?.primaryList || raw.schools.primaryList.length === 0) && (
@@ -548,9 +569,9 @@ export default function Report() {
                               <li key={i} className="text-sm flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
                                   <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                  {s.name || s}
+                                  <span className="font-medium">{s.name}</span>
                                 </div>
-                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                                <span className="text-xs text-muted-foreground">{s.distance}km</span>
                               </li>
                             ))}
                             {(!raw.schools?.secondaryList || raw.schools.secondaryList.length === 0) && (

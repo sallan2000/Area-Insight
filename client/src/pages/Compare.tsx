@@ -242,7 +242,7 @@ export default function Compare() {
                   referrerPolicy="no-referrer-when-downgrade"
                   src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report1.lng)-0.01}%2C${Number(report1.lat)-0.01}%2C${Number(report1.lng)+0.01}%2C${Number(report1.lat)+0.01}&layer=mapnik&marker=${report1.lat}%2C${report1.lng}`}
                 ></iframe>
-                <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
+                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
                   <span className="text-xs font-bold">{report1.postcode}</span>
                 </div>
               </div>
@@ -256,7 +256,7 @@ export default function Compare() {
                   referrerPolicy="no-referrer-when-downgrade"
                   src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report2.lng)-0.01}%2C${Number(report2.lat)-0.01}%2C${Number(report2.lng)+0.01}%2C${Number(report2.lat)+0.01}&layer=mapnik&marker=${report2.lat}%2C${report2.lng}`}
                 ></iframe>
-                <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
+                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full border border-border shadow-sm">
                   <span className="text-xs font-bold">{report2.postcode}</span>
                 </div>
               </div>

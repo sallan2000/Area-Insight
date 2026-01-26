@@ -256,8 +256,8 @@ async function fetchAreaMetrics(postcode: string) {
     [out:json][timeout:90];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
-      node["amenity"~"school|college|university|kindergarten"](around:5000,${lat},${lng});
-      way["amenity"~"school|college|university|kindergarten"](around:5000,${lat},${lng});
+      node["amenity"~"school|college|university|kindergarten"](around:3000,${lat},${lng});
+      way["amenity"~"school|college|university|kindergarten"](around:3000,${lat},${lng});
       node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
       node["railway"~"station|halt"](around:5000,${lat},${lng});
       way["railway"~"station|halt"](around:5000,${lat},${lng});

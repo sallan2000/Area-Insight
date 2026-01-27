@@ -131,6 +131,17 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     ? "https://www.saa.gov.uk/" 
     : "https://www.tax.service.gov.uk/check-council-tax-band/search";
 
+  // 4. Fetch Nearest Postcodes from postcodes.io
+  const nearestPostcodesRes = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`);
+  let nearestPostcodes = [];
+  if (nearestPostcodesRes.ok) {
+    const nearestData = await nearestPostcodesRes.json();
+    nearestPostcodes = nearestData.result
+      .filter((p: any) => p.postcode !== geoData.result.postcode)
+      .slice(0, 5)
+      .map((p: any) => p.postcode);
+  }
+
   // Calculate commute (simplified fallback)
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
@@ -185,7 +196,8 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
         fourG: "Excellent",
         fiveG: "Good"
       }
-    }
+    },
+    nearestPostcodes
   };
 
   return {

@@ -18,7 +18,7 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return Math.round(distance * 100) / 100; // Return precision to 2 decimal places (10m accuracy)
 }
 
-function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number) {
+function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number, nearestPostcodes: string[]) {
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -324,7 +324,7 @@ async function fetchAreaMetrics(postcode: string) {
     throw new Error("Could not retrieve local amenities from any provider. The mapping servers might be temporarily busy. Please try again in a few moments.");
   }
   
-  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes);
+  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes);
 }
 
 // Scoring Logic

@@ -609,6 +609,41 @@ export default function Report() {
             </div>
           </div>
         )}
+
+        {/* Nearest Postcodes Section */}
+        {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (
+          <div className="pt-8 border-t border-border">
+            <h4 className="text-lg font-bold font-display mb-4 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-primary" />
+              Nearest Neighbourhoods
+            </h4>
+            <div className="flex flex-wrap gap-3">
+              {raw.nearestPostcodes.map((pc: string) => (
+                <Button
+                  key={pc}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full hover-elevate active-elevate-2"
+                  onClick={async () => {
+                    try {
+                      const res = await apiRequest("POST", "/api/assess", { postcode: pc });
+                      const data = await res.json();
+                      setLocation(`/report/${data.id}`);
+                    } catch (err) {
+                      toast({
+                        title: "Error",
+                        description: "Could not assess this postcode",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                >
+                  {pc}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

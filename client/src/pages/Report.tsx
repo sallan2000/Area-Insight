@@ -100,13 +100,21 @@ export default function Report() {
   const exportAsImage = async () => {
     if (!reportRef.current || !report) return;
     try {
-      const dataUrl = await toPng(reportRef.current, { cacheBust: true });
+      // toPng struggles with iframes. We hide them during export and show a placeholder or just accept the blank space.
+      // Better yet, we can try to use static map images for exports in the future.
+      const dataUrl = await toPng(reportRef.current, { 
+        cacheBust: true,
+        backgroundColor: '#f9fafb',
+        // Filter out iframes from the export as they cause issues and often appear blank
+        filter: (node) => node.tagName !== 'IFRAME'
+      });
       const link = document.createElement('a');
       link.download = `ScoreMyStreet-${report.postcode}.png`;
       link.href = dataUrl;
       link.click();
       toast({ title: "Image exported!", description: "Your report has been saved as an image." });
     } catch (err) {
+      console.error(err);
       toast({ title: "Export failed", description: "Could not export as image.", variant: "destructive" });
     }
   };
@@ -114,15 +122,35 @@ export default function Report() {
   const exportAsPDF = async () => {
     if (!reportRef.current || !report) return;
     try {
-      const dataUrl = await toPng(reportRef.current, { cacheBust: true });
+      const dataUrl = await toPng(reportRef.current, { 
+        cacheBust: true,
+        backgroundColor: '#f9fafb',
+        filter: (node) => node.tagName !== 'IFRAME'
+      });
+      
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(dataUrl);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      let remainingHeight = pdfHeight;
+      let position = 0;
+
+      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+      remainingHeight -= pageHeight;
+
+      while (remainingHeight > 0) {
+        position = remainingHeight - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+        remainingHeight -= pageHeight;
+      }
+      
       pdf.save(`ScoreMyStreet-${report.postcode}.pdf`);
       toast({ title: "PDF exported!", description: "Your report has been saved as a PDF." });
     } catch (err) {
+      console.error(err);
       toast({ title: "Export failed", description: "Could not export as PDF.", variant: "destructive" });
     }
   };

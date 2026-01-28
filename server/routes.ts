@@ -194,7 +194,10 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     lng: String(lng),
     street,
     city,
-    metrics: resultMetrics
+    metrics: {
+      ...resultMetrics,
+      classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area"
+    }
   };
 }
 

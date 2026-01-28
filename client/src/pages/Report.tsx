@@ -253,7 +253,7 @@ export default function Report() {
                 <span className="flex items-center gap-2">
                   {report.postcode}
                   <span className="text-sm font-normal text-muted-foreground px-2 py-0.5 bg-gray-100 rounded-md">
-                    Residential Area
+                    {raw.classification || "Residential Area"}
                   </span>
                 </span>
                 {(raw.street || raw.city) && (

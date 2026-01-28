@@ -421,6 +421,36 @@ export async function registerRoutes(
           scores: scores
         });
 
+        // Background prefetch nearest neighbourhoods
+        if (data.metrics.nearestPostcodes && data.metrics.nearestPostcodes.length > 0) {
+          (async () => {
+            console.log(`[PREFETCH] Starting background prefetch for ${data.metrics.nearestPostcodes.length} postcodes near ${cleanPostcode}`);
+            for (const pc of data.metrics.nearestPostcodes) {
+              try {
+                const existing = await storage.getAssessmentByPostcode(pc);
+                if (!existing) {
+                  console.log(`[PREFETCH] Fetching ${pc}...`);
+                  const pcData = await fetchAreaMetrics(pc);
+                  const pcScores = calculateScores(pcData.metrics);
+                  await storage.createAssessment({
+                    postcode: pc,
+                    lat: pcData.lat,
+                    lng: pcData.lng,
+                    rawMetrics: { 
+                      ...pcData.metrics, 
+                      street: pcData.street, 
+                      city: pcData.city 
+                    },
+                    scores: pcScores
+                  });
+                }
+              } catch (err) {
+                console.error(`[PREFETCH ERROR] Failed for ${pc}:`, err instanceof Error ? err.message : err);
+              }
+            }
+          })();
+        }
+
         res.status(201).json(assessment);
       } catch (e: any) {
         res.status(400).json({ message: e.message || "Failed to fetch data for this postcode" });

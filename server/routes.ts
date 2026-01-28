@@ -201,8 +201,12 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
 // Helper function to fetch external data
 async function fetchAreaMetrics(postcode: string) {
   // 1. Geocode Postcode
-  const geoRes = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
-  if (!geoRes.ok) throw new Error("Invalid postcode");
+  const geoRes = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+  if (!geoRes.ok) {
+    const errorBody = await geoRes.text();
+    console.error(`Postcodes.io error for ${postcode}: ${geoRes.status}`, errorBody);
+    throw new Error("Invalid postcode");
+  }
   const geoData = await geoRes.json();
   
   const lat = geoData.result.latitude;
@@ -222,12 +226,21 @@ async function fetchAreaMetrics(postcode: string) {
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     fetchPromises.push(
       fetch(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`)
-        .then(res => res.ok ? res.json() : [])
-        .then(data => data.map((c: any) => ({
+        .then(async res => {
+          if (!res.ok) {
+            console.warn(`Police API error for ${dateStr}: ${res.status}`);
+            return [];
+          }
+          return res.json();
+        })
+        .then(data => (Array.isArray(data) ? data : []).map((c: any) => ({
           ...c,
           distance: getDistance(lat, lng, parseFloat(c.location.latitude), parseFloat(c.location.longitude))
         })).filter((c: any) => c.distance <= 1.0))
-        .catch(() => [])
+        .catch(err => {
+          console.error(`Police API fetch failed for ${dateStr}:`, err.message);
+          return [];
+        })
     );
   }
 

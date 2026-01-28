@@ -16,8 +16,15 @@ import {
   Receipt,
   ArrowRight,
   Wifi,
-  Signal
+  Signal,
+  Download,
+  Facebook,
+  Twitter,
+  Linkedin
 } from "lucide-react";
+import { toPng } from 'html-to-image';
+import { jsPDF } from 'jspdf';
+import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
@@ -44,7 +51,6 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { useState, useEffect } from "react";
 
 // Mock data for charts since real historical API might be limited
 const trendData = [
@@ -87,6 +93,51 @@ export default function Report() {
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const reportUrl = `${window.location.origin}/report/${id}`;
+
+  const exportAsImage = async () => {
+    if (!reportRef.current || !report) return;
+    try {
+      const dataUrl = await toPng(reportRef.current, { cacheBust: true });
+      const link = document.createElement('a');
+      link.download = `ScoreMyStreet-${report.postcode}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast({ title: "Image exported!", description: "Your report has been saved as an image." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Could not export as image.", variant: "destructive" });
+    }
+  };
+
+  const exportAsPDF = async () => {
+    if (!reportRef.current || !report) return;
+    try {
+      const dataUrl = await toPng(reportRef.current, { cacheBust: true });
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgProps = pdf.getImageProperties(dataUrl);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`ScoreMyStreet-${report.postcode}.pdf`);
+      toast({ title: "PDF exported!", description: "Your report has been saved as a PDF." });
+    } catch (err) {
+      toast({ title: "Export failed", description: "Could not export as PDF.", variant: "destructive" });
+    }
+  };
+
+  const shareSocial = (platform: 'facebook' | 'twitter' | 'linkedin') => {
+    if (!report) return;
+    const url = encodeURIComponent(reportUrl);
+    const text = encodeURIComponent(`Check out the liveability report for ${report.postcode} on ScoreMyStreet!`);
+    const links = {
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${url}`,
+      twitter: `https://twitter.com/intent/tweet?url=${url}&text=${text}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${url}`
+    };
+    window.open(links[platform], '_blank');
+  };
 
   if (isLoading) {
     return (
@@ -131,8 +182,6 @@ export default function Report() {
     (0.20 * scores.schools) + 
     (0.20 * scores.amenities)
   );
-
-  const reportUrl = `${window.location.origin}/report/${id}`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(reportUrl);
@@ -182,12 +231,35 @@ export default function Report() {
       <Dialog open={isShareModalOpen} onOpenChange={setIsShareModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Share Report</DialogTitle>
+            <DialogTitle>Share & Export Report</DialogTitle>
             <DialogDescription>
-              Share this liveability assessment for {report.postcode} with others.
+              Share this liveability assessment for {report.postcode} with others or download a copy.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" className="gap-2" onClick={exportAsImage}>
+                <Download className="h-4 w-4" />
+                Export Image
+              </Button>
+              <Button variant="outline" className="gap-2" onClick={exportAsPDF}>
+                <Download className="h-4 w-4" />
+                Export PDF
+              </Button>
+            </div>
+
+            <div className="flex justify-center gap-4 py-2 border-y">
+              <Button size="icon" variant="ghost" onClick={() => shareSocial('facebook')} title="Share on Facebook">
+                <Facebook className="h-5 w-5 text-blue-600" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => shareSocial('twitter')} title="Share on Twitter">
+                <Twitter className="h-5 w-5 text-sky-500" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => shareSocial('linkedin')} title="Share on LinkedIn">
+                <Linkedin className="h-5 w-5 text-blue-700" />
+              </Button>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Report Link</label>
               <div className="flex gap-2">
@@ -229,6 +301,7 @@ export default function Report() {
           </div>
         </DialogContent>
       </Dialog>
+      
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -266,385 +339,363 @@ export default function Report() {
           </div>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
             <Share2 className="w-4 h-4" />
-            Share Report
+            Share & Export
           </Button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Map Section */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Score Card */}
-          <div className="bg-white rounded-2xl p-8 shadow-sm border border-border flex flex-col items-center justify-center text-center lg:col-span-1">
-            <h2 className="text-lg font-semibold text-muted-foreground mb-6 uppercase tracking-wider">Liveability Score</h2>
-            <ScoreGauge score={overallScore} size="lg" />
-            <div className="mt-6 space-y-1">
-              <p className="text-2xl font-bold text-foreground">{getOverallGrade(overallScore)}</p>
-              <p className="text-sm text-muted-foreground">Compared to national average</p>
-              <div className="mt-4 pt-4 border-t border-border w-full">
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Calculation</p>
-                  <div className="bg-gray-50 rounded-lg p-3 border border-border">
-                    <p className="text-sm font-mono text-foreground leading-relaxed break-words">
-                      <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
-                      <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
-                      <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
-                      <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
-                      <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground font-medium uppercase pt-1">
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Tr: Transport</div>
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Sc: Schools</div>
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Am: Amenities</div>
+      <div ref={reportRef} className="bg-gray-50">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          {/* Map Section */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main Score Card */}
+            <div className="bg-white rounded-2xl p-8 shadow-sm border border-border flex flex-col items-center justify-center text-center lg:col-span-1">
+              <h2 className="text-lg font-semibold text-muted-foreground mb-6 uppercase tracking-wider">Liveability Score</h2>
+              <ScoreGauge score={overallScore} size="lg" />
+              <div className="mt-6 space-y-1">
+                <p className="text-2xl font-bold text-foreground">{getOverallGrade(overallScore)}</p>
+                <p className="text-sm text-muted-foreground">Compared to national average</p>
+                <div className="mt-4 pt-4 border-t border-border w-full">
+                  <div className="space-y-3">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Calculation</p>
+                    <div className="bg-gray-50 rounded-lg p-3 border border-border">
+                      <p className="text-sm font-mono text-foreground leading-relaxed break-words">
+                        <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
+                        <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
+                        <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
+                        <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
+                        <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground font-medium uppercase pt-1">
+                      <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Tr: Transport</div>
+                      <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
+                      <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Sc: Schools</div>
+                      <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Am: Amenities</div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative group">
-              <div className="w-full h-full min-h-[400px]">
-                <iframe
-                  width="100%"
-                  height="100%"
-                  style={{ border: 0, minHeight: '400px' }}
-                  loading="lazy"
-                  allowFullScreen
-                  referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.01}%2C${Number(report.lat)-0.01}%2C${Number(report.lng)+0.01}%2C${Number(report.lat)+0.01}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
-                ></iframe>
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Council Tax Section */}
-            {raw.councilTax && (
-              <Card className="bg-white border-none shadow-sm overflow-hidden">
-                <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
-                      <Receipt className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold">Local Council Tax</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Estimated band for properties in <span className="font-semibold">{report.postcode}</span>: 
-                        <span className="ml-1 text-foreground font-bold">Band {raw.councilTax.estimatedBand}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <a 
-                    href={raw.councilTax.lookupUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="w-full md:w-auto"
-                  >
-                    <Button variant="outline" className="w-full gap-2">
-                      Official Lookup
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </a>
-                </div>
-              </Card>
-            )}
-          </div>
-        </section>
-
-        {/* Detailed Metrics Grid & Analysis Grouped Together */}
-        <section className="space-y-8">
-          <div>
-            <h3 className="text-xl font-display font-bold mb-6 px-1">Performance Breakdown</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <MetricCard
-                title="Transport"
-                score={scores.transport}
-                icon={<Bus className="w-6 h-6" />}
-                description={`${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
-                status={getOverallGrade(scores.transport)}
-                isActive={activeTab === 'transport'}
-                onClick={() => setActiveTab('transport')}
-              />
-              <MetricCard
-                title="Safety"
-                score={scores.safety}
-                icon={<Shield className="w-6 h-6" />}
-                description={`${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
-                status={getOverallGrade(scores.safety)}
-                trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
-                isActive={activeTab === 'safety'}
-                onClick={() => setActiveTab('safety')}
-              />
-              <MetricCard
-                title="Schools"
-                score={scores.schools}
-                icon={<GraduationCap className="w-6 h-6" />}
-                description={`${raw.schools?.count || 0} schools nearby`}
-                status={getOverallGrade(scores.schools)}
-                isActive={activeTab === 'schools'}
-                onClick={() => setActiveTab('schools')}
-              />
-              <MetricCard
-                title="Amenities"
-                score={scores.amenities}
-                icon={<Store className="w-6 h-6" />}
-                description={`${raw.amenities?.totalCount || 0} shops, parks, and services`}
-                status={getOverallGrade(scores.amenities)}
-                isActive={activeTab === 'amenities'}
-                onClick={() => setActiveTab('amenities')}
-              />
-            </div>
-          </div>
-
-          <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
-            <div className="p-6 border-b border-border">
-              <h3 className="text-lg font-bold font-display flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                Detailed Analysis: <span className="capitalize">{activeTab || ''}</span>
-              </h3>
-            </div>
-            
-            <div className="p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-6">
-                  <div className="p-6 bg-gray-50 rounded-xl border border-border">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
-                      <span className="text-2xl font-bold text-primary">{activeTab ? Math.round(scores[activeTab]) : 0}/100</span>
-                    </div>
-                    <div className="prose prose-sm text-muted-foreground">
-                      <p>
-                        The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
-                    <div className="p-4 bg-gray-50 rounded-xl border border-border">
-                      <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
-                      <p className="text-xl font-bold text-foreground">
-                        {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
-                         activeTab === 'transport' ? `${raw.transport?.busStopCount + raw.transport?.stationCount} stops/stations` : 
-                         activeTab === 'schools' ? `${raw.schools?.count} educational facilities` : 
-                         `${raw.amenities?.totalCount} local services`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Nearby Highlights</h4>
-                  <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
-                    <ul className="space-y-2">
-                      {activeTab === 'safety' && raw.safetyBreakdown && (
-                        <div className="space-y-3">
-                          {[
-                            { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
-                            { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
-                            { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
-                            { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
-                            { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
-                          ].map((item) => (
-                            <div key={item.label} className="space-y-1">
-                              <div className="flex justify-between text-xs font-medium">
-                                <span>{item.label}</span>
-                                <span>{item.value}</span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                <div 
-                                  className={`${item.color} h-1.5 rounded-full`} 
-                                  style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {activeTab === 'transport' && (
-                        <>
-                          {raw.transport?.stations?.map((s: any, i: number) => (
-                            <li key={i} className="text-sm flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                <span className="font-medium">Station:</span> {s.name || s}
-                              </div>
-                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                            </li>
-                          ))}
-                          {raw.transport?.busStops?.map((s: any, i: number) => (
-                            <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
-                              <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                                <span className="font-medium">Bus Stop:</span> {s.name || s}
-                              </div>
-                              {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                            </li>
-                          ))}
-                        </>
-                      )}
-                      {activeTab === 'schools' && (
-                        <div className="space-y-6">
-                          <div>
-                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
-                            <ul className="space-y-2">
-                              {raw.schools?.primaryList?.map((s: any, i: number) => (
-                                <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                    <span className="font-medium">{s.name}</span>
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">{s.distance}km</span>
-                                </li>
-                              ))}
-                              {(!raw.schools?.primaryList || raw.schools.primaryList.length === 0) && (
-                                <li className="text-sm text-muted-foreground italic">No primary schools identified nearby.</li>
-                              )}
-                            </ul>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
-                            <ul className="space-y-2">
-                              {raw.schools?.secondaryList?.map((s: any, i: number) => (
-                                <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                    <span className="font-medium">{s.name}</span>
-                                  </div>
-                                  <span className="text-xs text-muted-foreground">{s.distance}km</span>
-                                </li>
-                              ))}
-                              {(!raw.schools?.secondaryList || raw.schools.secondaryList.length === 0) && (
-                                <li className="text-sm text-muted-foreground italic">No secondary or higher education facilities identified nearby.</li>
-                              )}
-                            </ul>
-                          </div>
-                        </div>
-                      )}
-                      {activeTab === 'amenities' && raw.amenities?.list?.map((a: any, i: number) => (
-                        <li key={i} className="text-sm flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                            <span className="font-medium capitalize">{a.category.replace('_', ' ')}:</span> {a.name}
-                          </div>
-                          {a.distance !== undefined && <span className="text-xs text-muted-foreground">{a.distance}km</span>}
-                        </li>
-                      ))}
-                      {activeTab === 'safety' && (
-                        <li className="text-sm italic text-muted-foreground mt-4">
-                          Due to privacy, specific crime locations are restricted to street-level anonymized data.
-                        </li>
-                      )}
-                      {!activeTab && (
-                        <li className="text-sm italic text-muted-foreground mt-4">
-                          Select a category above to view detailed metrics and analysis.
-                        </li>
-                      )}
-                    </ul>
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative group">
+                <div className="w-full h-full min-h-[400px]">
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    style={{ border: 0, minHeight: '400px' }}
+                    loading="lazy"
+                    allowFullScreen
+                    referrerPolicy="no-referrer-when-downgrade"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.01}%2C${Number(report.lat)-0.01}%2C${Number(report.lng)+0.01}%2C${Number(report.lat)+0.01}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
+                  ></iframe>
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
                   </div>
                 </div>
               </div>
+
+              {/* Council Tax Section */}
+              {raw.councilTax && (
+                <Card className="bg-white border-none shadow-sm overflow-hidden">
+                  <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                        <Receipt className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold">Local Council Tax</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Estimated band for properties in <span className="font-semibold">{report.postcode}</span>: 
+                          <span className="ml-1 text-foreground font-bold">Band {raw.councilTax.estimatedBand}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <a 
+                      href={raw.councilTax.lookupUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-full md:w-auto"
+                    >
+                      <Button variant="outline" className="w-full gap-2">
+                        Official Lookup
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </a>
+                  </div>
+                </Card>
+              )}
             </div>
           </section>
-        </section>
 
-        {/* Connectivity Section (Bottom) */}
-        {raw.connectivity && (
-          <div className="pt-8 border-t border-border">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="p-6 shadow-sm">
-                <h4 className="font-bold mb-4 flex items-center gap-2">
-                  <Wifi className="w-4 h-4 text-primary" />
-                  Broadband Availability
-                </h4>
-                <div className="space-y-3">
-                  {raw.connectivity.broadband.map((item: any) => (
-                    <div key={item.type} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                      <div className="flex flex-col">
-                        <span className="font-medium text-sm">{item.type}</span>
-                        <span className="text-[10px] text-muted-foreground">Download up to {item.speed}</span>
+          {/* Detailed Metrics Grid & Analysis Grouped Together */}
+          <section className="space-y-8">
+            <div>
+              <h3 className="text-xl font-display font-bold mb-6 px-1">Performance Breakdown</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <MetricCard
+                  title="Transport"
+                  score={scores.transport}
+                  icon={<Bus className="w-6 h-6" />}
+                  description={`${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
+                  status={getOverallGrade(scores.transport)}
+                  isActive={activeTab === 'transport'}
+                  onClick={() => setActiveTab('transport')}
+                />
+                <MetricCard
+                  title="Safety"
+                  score={scores.safety}
+                  icon={<Shield className="w-6 h-6" />}
+                  description={`${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
+                  status={getOverallGrade(scores.safety)}
+                  trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
+                  isActive={activeTab === 'safety'}
+                  onClick={() => setActiveTab('safety')}
+                />
+                <MetricCard
+                  title="Schools"
+                  score={scores.schools}
+                  icon={<GraduationCap className="w-6 h-6" />}
+                  description={`${raw.schools?.count || 0} schools nearby`}
+                  status={getOverallGrade(scores.schools)}
+                  isActive={activeTab === 'schools'}
+                  onClick={() => setActiveTab('schools')}
+                />
+                <MetricCard
+                  title="Amenities"
+                  score={scores.amenities}
+                  icon={<Store className="w-6 h-6" />}
+                  description={`${raw.amenities?.totalCount || 0} shops, parks, and services`}
+                  status={getOverallGrade(scores.amenities)}
+                  isActive={activeTab === 'amenities'}
+                  onClick={() => setActiveTab('amenities')}
+                />
+              </div>
+            </div>
+
+            <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
+              <div className="p-6 border-b border-border">
+                <h3 className="text-lg font-bold font-display flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  Detailed Analysis: <span className="capitalize">{activeTab || ''}</span>
+                </h3>
+              </div>
+              
+              <div className="p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <div className="p-6 bg-gray-50 rounded-xl border border-border">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
+                        <span className="text-2xl font-bold text-primary">{activeTab ? Math.round(scores[activeTab]) : 0}/100</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                          item.availability === 'Likely' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {item.availability}
+                      <div className="prose prose-sm text-muted-foreground">
+                        <p>
+                          The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
+                      <div className="p-4 bg-gray-50 rounded-xl border border-border">
+                        <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
+                        <p className="text-xl font-bold text-foreground">
+                          {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
+                           activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` : 
+                           activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` : 
+                           `${raw.amenities?.totalCount || 0} local services`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Nearby Highlights</h4>
+                    <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
+                      <ul className="space-y-2">
+                        {activeTab === 'safety' && raw.safetyBreakdown && (
+                          <div className="space-y-3">
+                            {[
+                              { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
+                              { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
+                              { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
+                              { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
+                              { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
+                            ].map((item) => (
+                              <div key={item.label} className="space-y-1">
+                                <div className="flex justify-between text-xs font-medium">
+                                  <span>{item.label}</span>
+                                  <span>{item.value}</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                  <div 
+                                    className={`${item.color} h-1.5 rounded-full`} 
+                                    style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {activeTab === 'transport' && (
+                          <>
+                            {raw.transport?.stations?.map((s: any, i: number) => (
+                              <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                  <span className="font-medium">Station:</span> {s.name || s}
+                                </div>
+                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                              </li>
+                            ))}
+                            {raw.transport?.busStops?.map((s: any, i: number) => (
+                              <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                                  <span className="font-medium">Bus Stop:</span> {s.name || s}
+                                </div>
+                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
+                              </li>
+                            ))}
+                          </>
+                        )}
+                        {activeTab === 'schools' && (
+                          <div className="space-y-6">
+                            <div>
+                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
+                              <ul className="space-y-2">
+                                {raw.schools?.primaryList?.map((s: any, i: number) => (
+                                  <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                      <span className="font-medium">{s.name}</span>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{s.distance}km</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
+                              <ul className="space-y-2">
+                                {raw.schools?.secondaryList?.map((s: any, i: number) => (
+                                  <li key={i} className="text-sm flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                      <span className="font-medium">{s.name}</span>
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">{s.distance}km</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+                        {activeTab === 'amenities' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {raw.amenities?.list?.slice(0, 20).map((a: any, i: number) => (
+                              <li key={i} className="text-xs bg-white p-2 rounded-lg border border-border shadow-sm">
+                                <p className="font-bold text-foreground line-clamp-1">{a.name}</p>
+                                <div className="flex justify-between items-center mt-1">
+                                  <span className="text-[10px] text-muted-foreground uppercase">{a.category}</span>
+                                  <span className="font-medium text-primary">{a.distance}km</span>
+                                </div>
+                              </li>
+                            ))}
+                          </div>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          {/* Connectivity Section */}
+          <section className="space-y-6">
+            <h3 className="text-xl font-display font-bold px-1">Digital Connectivity</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="bg-white border-border shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                      <Wifi className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold">Broadband Availability</h4>
+                      <p className="text-sm text-muted-foreground">Local infrastructure status</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    {raw.connectivity?.broadband.map((b: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{b.type}</p>
+                          <p className="text-xs text-muted-foreground">Up to {b.speed}</p>
+                        </div>
+                        <span className="text-xs font-bold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md">
+                          {b.availability}
                         </span>
                       </div>
-                    </div>
-                  ))}
-                  <p className="text-[10px] text-muted-foreground mt-2 italic">
-                    Source: Based on Ofcom coverage data for this area.
-                  </p>
-                </div>
+                    ))}
+                  </div>
+                </CardContent>
               </Card>
 
-              <Card className="p-6 shadow-sm">
-                <h4 className="font-bold mb-4 flex items-center gap-2">
-                  <Signal className="w-4 h-4 text-primary" />
-                  Coverage
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50/50 border border-blue-100">
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="p-1.5 bg-blue-100 rounded-lg text-blue-600 font-bold">4G</div>
-                      <span className="font-semibold">4G Coverage</span>
+              <Card className="bg-white border-border shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                      <Signal className="w-6 h-6" />
                     </div>
-                    <span className="text-blue-700 font-bold text-sm">{raw.connectivity.mobile.fourG}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-purple-50/50 border border-purple-100">
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="p-1.5 bg-purple-100 rounded-lg text-purple-600 font-bold">5G</div>
-                      <span className="font-semibold">5G Coverage</span>
+                    <div>
+                      <h4 className="font-bold">Mobile Coverage</h4>
+                      <p className="text-sm text-muted-foreground">Indoor & Outdoor signal</p>
                     </div>
-                    <span className="text-purple-700 font-bold text-sm">{raw.connectivity.mobile.fiveG}</span>
                   </div>
-                </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
+                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">4G Coverage</p>
+                      <p className="text-xl font-bold text-emerald-600">{raw.connectivity?.mobile.fourG}</p>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
+                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">5G Coverage</p>
+                      <p className="text-xl font-bold text-indigo-600">{raw.connectivity?.mobile.fiveG}</p>
+                    </div>
+                  </div>
+                </CardContent>
               </Card>
             </div>
-          </div>
-        )}
+          </section>
 
-        {/* Nearest Postcodes Section */}
-        {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (
-          <div className="pt-8 border-t border-border">
-            <h4 className="text-lg font-bold font-display mb-4 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-primary" />
-              Nearest Neighbourhoods
-            </h4>
-            <div className="flex flex-wrap gap-3">
-              {raw.nearestPostcodes.map((pc: string) => (
-                <Button
-                  key={pc}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full hover-elevate active-elevate-2"
-                  onClick={async () => {
-                    try {
-                      const res = await apiRequest("POST", "/api/assess", { postcode: pc });
-                      const data = await res.json();
-                      setLocation(`/report/${data.id}`);
-                    } catch (err) {
-                      toast({
-                        title: "Error",
-                        description: "Could not assess this postcode",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                >
-                  {pc}
-                </Button>
-              ))}
+          {/* Nearest Neighbourhoods */}
+          {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (
+            <div className="pt-8 border-t border-border">
+              <h3 className="text-lg font-display font-bold mb-4">Nearby Neighbourhoods</h3>
+              <div className="flex flex-wrap gap-3">
+                {raw.nearestPostcodes.map((pc: string) => (
+                  <Button 
+                    key={pc} 
+                    variant="outline" 
+                    size="sm" 
+                    className="bg-white hover:bg-gray-100"
+                    onClick={() => {
+                      // Trigger new assessment/redirect
+                      window.location.href = `/report/new?postcode=${pc}`;
+                    }}
+                  >
+                    {pc}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

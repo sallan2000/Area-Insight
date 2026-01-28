@@ -131,17 +131,6 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
     ? "https://www.saa.gov.uk/" 
     : "https://www.tax.service.gov.uk/check-council-tax-band/search";
 
-  // 4. Fetch Nearest Postcodes from postcodes.io
-  const nearestPostcodesRes = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`);
-  let nearestPostcodes = [];
-  if (nearestPostcodesRes.ok) {
-    const nearestData = await nearestPostcodesRes.json();
-    nearestPostcodes = nearestData.result
-      .filter((p: any) => p.postcode !== geoData.result.postcode)
-      .slice(0, 5)
-      .map((p: any) => p.postcode);
-  }
-
   // Calculate commute (simplified fallback)
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
@@ -323,6 +312,25 @@ async function fetchAreaMetrics(postcode: string) {
   if (elements.length === 0) {
     throw new Error("Could not retrieve local amenities from any provider. The mapping servers might be temporarily busy. Please try again in a few moments.");
   }
+
+  // 4. Fetch Nearest Postcodes from postcodes.io
+  const fetchNearest = async () => {
+    try {
+      const res = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`);
+      if (res.ok) {
+        const nearestData = await res.json();
+        return nearestData.result
+          .filter((p: any) => p.postcode !== geoData.result.postcode)
+          .slice(0, 5)
+          .map((p: any) => p.postcode);
+      }
+    } catch (e) {
+      console.error("Failed to fetch nearest postcodes", e);
+    }
+    return [];
+  };
+
+  const nearestPostcodes = await fetchNearest();
   
   return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes);
 }

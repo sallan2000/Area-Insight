@@ -380,6 +380,26 @@ export async function registerRoutes(
         scores: scores
       });
       res.status(201).json(assessment);
+
+      // Trigger pre-fetching for nearest postcodes in the background
+      if (data.metrics.nearestPostcodes && data.metrics.nearestPostcodes.length > 0) {
+        console.log(`Pre-fetching ${data.metrics.nearestPostcodes.length} nearest postcodes for ${cleanPostcode}...`);
+        data.metrics.nearestPostcodes.forEach((pc: string) => {
+          fetchAreaMetrics(pc).then(async (pcData) => {
+            const pcScores = calculateScores(pcData.metrics);
+            await storage.createAssessment({
+              postcode: pc.toUpperCase(),
+              lat: pcData.lat,
+              lng: pcData.lng,
+              rawMetrics: { ...pcData.metrics, street: pcData.street, city: pcData.city },
+              scores: pcScores
+            });
+            console.log(`Background fetch success: ${pc}`);
+          }).catch(err => {
+            console.error(`Background fetch failed for ${pc}:`, err.message);
+          });
+        });
+      }
     } catch (e: any) {
       res.status(400).json({ message: e.message || "Failed to fetch data" });
     }

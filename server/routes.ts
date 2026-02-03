@@ -381,11 +381,11 @@ export async function registerRoutes(
       });
       res.status(201).json(assessment);
 
-      // Trigger pre-fetching for nearest postcodes in the background
+      // Trigger pre-fetching for nearest postcodes in the background with concurrency limit
       if (data.metrics.nearestPostcodes && data.metrics.nearestPostcodes.length > 0) {
-        console.log(`Pre-fetching ${data.metrics.nearestPostcodes.length} nearest postcodes for ${cleanPostcode}...`);
-        data.metrics.nearestPostcodes.forEach((pc: string) => {
-          fetchAreaMetrics(pc).then(async (pcData) => {
+        const fetchWithRetry = async (pc: string, retries = 2) => {
+          try {
+            const pcData = await fetchAreaMetrics(pc);
             const pcScores = calculateScores(pcData.metrics);
             await storage.createAssessment({
               postcode: pc.toUpperCase(),
@@ -395,10 +395,24 @@ export async function registerRoutes(
               scores: pcScores
             });
             console.log(`Background fetch success: ${pc}`);
-          }).catch(err => {
+          } catch (err: any) {
+            if (retries > 0 && err.message?.includes('timeout')) {
+              console.log(`Retrying ${pc} due to timeout...`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              return fetchWithRetry(pc, retries - 1);
+            }
             console.error(`Background fetch failed for ${pc}:`, err.message);
-          });
-        });
+          }
+        };
+
+        // Run sequentially to avoid overwhelming Overpass API and trigger timeouts
+        (async () => {
+          for (const pc of data.metrics.nearestPostcodes) {
+            await fetchWithRetry(pc);
+            // Small delay between background tasks to be polite to APIs
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        })();
       }
     } catch (e: any) {
       res.status(400).json({ message: e.message || "Failed to fetch data" });

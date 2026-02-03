@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCreateAssessment } from "@/hooks/use-assess";
 import { Search, MapPin, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
@@ -11,9 +11,8 @@ export default function Home() {
   const { mutate, isPending } = useCreateAssessment();
   const { toast } = useToast();
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPostcode = postcode.trim().toUpperCase();
+  const handleAssessment = (pc: string) => {
+    const cleanPostcode = pc.trim().toUpperCase();
     const postcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$/i;
 
     if (!cleanPostcode) {
@@ -56,6 +55,23 @@ export default function Home() {
         });
       }
     });
+  };
+
+  // Handle automatic search from URL params (for nearest postcodes)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pc = params.get('postcode');
+    if (pc) {
+      setPostcode(pc);
+      handleAssessment(pc);
+      // Clean up URL params after search
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleAssessment(postcode);
   };
 
   return (

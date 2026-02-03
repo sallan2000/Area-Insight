@@ -712,8 +712,8 @@ export default function Report() {
                     size="sm" 
                     className="bg-white hover:bg-gray-100"
                     onClick={() => {
-                      // Trigger new assessment/redirect
-                      window.location.href = `/report/new?postcode=${pc}`;
+                      // Navigate back to home with the postcode to trigger a new search
+                      setLocation(`/?postcode=${pc}`);
                     }}
                   >
                     {pc}

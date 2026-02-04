@@ -88,7 +88,48 @@ export default function Report() {
     }
   }, [report, activeTab]);
 
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
+
+  const renderAmenityList = (items: any[], category: string) => {
+    const isExpanded = expandedCategories.has(category);
+    const visibleItems = isExpanded ? items : items.slice(0, 5);
+    const hasMore = items.length > 5;
+
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {visibleItems.map((item: any, i: number) => (
+            <li key={i} className="text-xs bg-white p-2 rounded-lg border border-border shadow-sm list-none">
+              <p className="font-bold text-foreground line-clamp-1">{item.name}</p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[10px] text-muted-foreground uppercase">{item.category || category}</span>
+                <span className="font-medium text-primary">{item.distance}km</span>
+              </div>
+            </li>
+          ))}
+        </div>
+        {hasMore && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="w-full text-xs text-primary hover:text-primary/80 h-8"
+            onClick={() => toggleCategory(category)}
+          >
+            {isExpanded ? "Show Less" : `Show More (${items.length - 5} more)`}
+          </Button>
+        )}
+      </div>
+    );
+  };
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -545,93 +586,69 @@ export default function Report() {
                     <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
                       <ul className="space-y-2">
                         {activeTab === 'safety' && raw.safetyBreakdown && (
-                          <div className="space-y-3">
-                            {[
-                              { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
-                              { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
-                              { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
-                              { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
-                              { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
-                            ].map((item) => (
-                              <div key={item.label} className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium">
-                                  <span>{item.label}</span>
-                                  <span>{item.value}</span>
+                          <div className="space-y-6">
+                            <div className="space-y-3">
+                              {[
+                                { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
+                                { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
+                                { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
+                                { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
+                                { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
+                              ].map((item) => (
+                                <div key={item.label} className="space-y-1">
+                                  <div className="flex justify-between text-xs font-medium">
+                                    <span>{item.label}</span>
+                                    <span>{item.value}</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div 
+                                      className={`${item.color} h-1.5 rounded-full`} 
+                                      style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                  <div 
-                                    className={`${item.color} h-1.5 rounded-full`} 
-                                    style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         )}
                         {activeTab === 'transport' && (
-                          <>
-                            {raw.transport?.stations?.map((s: any, i: number) => (
-                              <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                  <span className="font-medium">Station:</span> {s.name || s}
-                                </div>
-                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                              </li>
-                            ))}
-                            {raw.transport?.busStops?.map((s: any, i: number) => (
-                              <li key={i} className="text-sm flex items-center justify-between gap-2 text-muted-foreground">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-                                  <span className="font-medium">Bus Stop:</span> {s.name || s}
-                                </div>
-                                {s.distance !== undefined && <span className="text-xs text-muted-foreground">{s.distance}km</span>}
-                              </li>
-                            ))}
-                          </>
+                          <div className="space-y-6">
+                            <div>
+                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Stations</h5>
+                              {renderAmenityList(raw.transport?.stations || [], 'station')}
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Bus Stops</h5>
+                              {renderAmenityList(raw.transport?.busStops || [], 'bus_stop')}
+                            </div>
+                          </div>
                         )}
                         {activeTab === 'schools' && (
                           <div className="space-y-6">
                             <div>
-                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Primary & Nursery</h5>
-                              <ul className="space-y-2">
-                                {raw.schools?.primaryList?.map((s: any, i: number) => (
-                                  <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                      <span className="font-medium">{s.name}</span>
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">{s.distance}km</span>
-                                  </li>
-                                ))}
-                              </ul>
+                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Primary & Nursery</h5>
+                              {renderAmenityList(raw.schools?.primaryList || [], 'primary_school')}
                             </div>
                             <div>
-                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-2">Secondary & Higher</h5>
-                              <ul className="space-y-2">
-                                {raw.schools?.secondaryList?.map((s: any, i: number) => (
-                                  <li key={i} className="text-sm flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                                      <span className="font-medium">{s.name}</span>
-                                    </div>
-                                    <span className="text-xs text-muted-foreground">{s.distance}km</span>
-                                  </li>
-                                ))}
-                              </ul>
+                              <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Secondary & Higher</h5>
+                              {renderAmenityList(raw.schools?.secondaryList || [], 'secondary_school')}
                             </div>
                           </div>
                         )}
                         {activeTab === 'amenities' && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {raw.amenities?.list?.slice(0, 20).map((a: any, i: number) => (
-                              <li key={i} className="text-xs bg-white p-2 rounded-lg border border-border shadow-sm">
-                                <p className="font-bold text-foreground line-clamp-1">{a.name}</p>
-                                <div className="flex justify-between items-center mt-1">
-                                  <span className="text-[10px] text-muted-foreground uppercase">{a.category}</span>
-                                  <span className="font-medium text-primary">{a.distance}km</span>
-                                </div>
-                              </li>
+                          <div className="space-y-6">
+                            {Object.entries(
+                              (raw.amenities?.list || []).reduce((acc: any, item: any) => {
+                                const cat = item.category || 'other';
+                                if (!acc[cat]) acc[cat] = [];
+                                acc[cat].push(item);
+                                return acc;
+                              }, {})
+                            ).map(([category, items]: [string, any]) => (
+                              <div key={category}>
+                                <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">{category.replace(/_/g, ' ')}</h5>
+                                {renderAmenityList(items, category)}
+                              </div>
                             ))}
                           </div>
                         )}

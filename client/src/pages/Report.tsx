@@ -133,6 +133,7 @@ export default function Report() {
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
 

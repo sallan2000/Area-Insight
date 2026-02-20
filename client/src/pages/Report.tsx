@@ -111,7 +111,7 @@ export default function Report() {
             <li key={i} className="text-xs bg-white p-2 rounded-lg border border-border shadow-sm list-none">
               <p className="font-bold text-foreground line-clamp-1">{item.name}</p>
               <div className="flex justify-between items-center mt-1">
-                <span className="text-[10px] text-muted-foreground uppercase">{item.category || category}</span>
+                <span className="text-[10px] text-muted-foreground uppercase">{(item.category || category).replace(/_/g, ' ')}</span>
                 <span className="font-medium text-primary">{item.distance}km</span>
               </div>
             </li>

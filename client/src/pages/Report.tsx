@@ -586,15 +586,15 @@ export default function Report() {
                     <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Nearby Highlights</h4>
                     <div className="bg-gray-50 rounded-xl p-4 max-h-[400px] overflow-y-auto border border-border">
                       <ul className="space-y-2">
-                        {activeTab === 'safety' && raw.safetyBreakdown && (
+                        {activeTab === 'safety' && (
                           <div className="space-y-6">
                             <div className="space-y-3">
                               {[
-                                { label: 'Violent & Weapons', value: raw.safetyBreakdown.violent, color: 'bg-red-500' },
-                                { label: 'Theft & Burglary', value: raw.safetyBreakdown.theft, color: 'bg-orange-500' },
-                                { label: 'Vehicle Crime', value: raw.safetyBreakdown.vehicle, color: 'bg-amber-500' },
-                                { label: 'Drug Related', value: raw.safetyBreakdown.drugs, color: 'bg-blue-500' },
-                                { label: 'Anti-Social Behavior', value: raw.safetyBreakdown.asb, color: 'bg-gray-500' },
+                                { label: 'Violent & Weapons', value: raw.safetyBreakdown?.violent || 0, color: 'bg-red-500' },
+                                { label: 'Theft & Burglary', value: raw.safetyBreakdown?.theft || 0, color: 'bg-orange-500' },
+                                { label: 'Vehicle Crime', value: raw.safetyBreakdown?.vehicle || 0, color: 'bg-amber-500' },
+                                { label: 'Drug Related', value: raw.safetyBreakdown?.drugs || 0, color: 'bg-blue-500' },
+                                { label: 'Anti-Social Behavior', value: raw.safetyBreakdown?.asb || 0, color: 'bg-gray-500' },
                               ].map((item) => (
                                 <div key={item.label} className="space-y-1">
                                   <div className="flex justify-between text-xs font-medium">

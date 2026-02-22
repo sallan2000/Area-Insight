@@ -292,7 +292,7 @@ async function fetchAreaMetrics(postcode: string) {
   const older6Months = allMonthsCrimes.slice(6, 12).reduce((acc, m) => acc + m.length, 0);
   const crimeTrend = recent6Months < older6Months ? "down" : (recent6Months > older6Months ? "up" : "stable");
 
-  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery' || c.category === 'possession-of-weapons').length;
+  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery' || c.category === 'possession-of-weapons' || c.category === 'violence-and-sexual-offences').length;
   const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person' || c.category === 'shoplifting').length;
   const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour' || c.category === 'public-order').length;
   const vehicleCrimes = crimesData.filter((c: any) => c.category === 'vehicle-crime').length;

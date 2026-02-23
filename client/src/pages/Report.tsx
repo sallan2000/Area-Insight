@@ -518,7 +518,7 @@ export default function Report() {
                   title="Safety"
                   score={scores.safety}
                   icon={<Shield className="w-6 h-6" />}
-                  description={`${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
+                  description={raw.neighbourhood ? `Area: ${raw.neighbourhood.name}` : `${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
                   status={getOverallGrade(scores.safety)}
                   trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
                   isActive={activeTab === 'safety'}
@@ -588,6 +588,18 @@ export default function Report() {
                       <ul className="space-y-2">
                         {activeTab === 'safety' && (
                           <div className="space-y-6">
+                            {raw.neighbourhood && (
+                              <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
+                                <h5 className="text-sm font-bold text-primary mb-1">Police Neighbourhood: {raw.neighbourhood.name}</h5>
+                                {raw.neighbourhood.description && (
+                                  <div 
+                                    className="text-xs text-muted-foreground line-clamp-3 mb-2"
+                                    dangerouslySetInnerHTML={{ __html: raw.neighbourhood.description }}
+                                  />
+                                )}
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Population: {raw.neighbourhood.population || 'Unknown'}</p>
+                              </div>
+                            )}
                             <div className="space-y-3">
                               {[
                                 { label: 'Violent & Weapons', value: raw.safetyBreakdown?.violent || 0, color: 'bg-red-500' },

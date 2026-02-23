@@ -297,25 +297,46 @@ async function fetchAreaMetrics(postcode: string) {
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     
     let url = `https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`;
-    if (neighbourhoodInfo) {
-      // The user specifically asked to use the neighbourhood specific search:
-      // https://data.police.uk/api/crimes-no-location?category=all-crime&force=leicestershire&neighbourhood=NC04&date=2013-01
-      url = `https://data.police.uk/api/crimes-no-location?category=all-crime&force=${neighbourhoodInfo.url_force}&neighbourhood=${neighbourhoodInfo.id}&date=${dateStr}`;
-    }
+    // The user specifically asked to use the neighbourhood specific search, but it often returns no results 
+    // for recent months or specific categories. Let's fetch BOTH or fallback.
+    // Actually, "crimes-no-location" is for crimes that COULD NOT be mapped to a specific location.
+    // The user probably wants "crimes-at-location" or just the standard street level crimes for that neighbourhood.
+    // However, the data.police.uk API for a neighbourhood's crimes is usually via the 'crimes' endpoint if they provide a boundary,
+    // but the most reliable way to get crimes for an area is still the lat/lng street-level API.
+    
+    // Let's try to fetch both if neighbourhood is available, and merge them.
+    const fetchCrimeData = async (targetUrl: string) => {
+      try {
+        const res = await fetch(targetUrl);
+        return res.ok ? await res.json() : [];
+      } catch (e) {
+        return [];
+      }
+    };
 
-    fetchPromises.push(
-      fetch(url)
-        .then(async res => res.ok ? res.json() : [])
-        .then(data => (Array.isArray(data) ? data : []).map((c: any) => {
-          const cLat = c.location?.latitude ? parseFloat(c.location.latitude) : lat;
-          const cLng = c.location?.longitude ? parseFloat(c.location.longitude) : lng;
-          return {
-            ...c,
-            distance: getDistance(lat, lng, cLat, cLng)
-          };
-        }))
-        .catch(() => [])
-    );
+    fetchPromises.push((async () => {
+      const streetCrimes = await fetchCrimeData(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`);
+      let neighbourhoodCrimes: any[] = [];
+      
+      if (neighbourhoodInfo) {
+        // Try the "crimes-no-location" as requested, but also maybe they meant "crimes-at-location"
+        neighbourhoodCrimes = await fetchCrimeData(`https://data.police.uk/api/crimes-no-location?category=all-crime&force=${neighbourhoodInfo.url_force}&neighbourhood=${neighbourhoodInfo.id}&date=${dateStr}`);
+      }
+
+      const combined = [...(Array.isArray(streetCrimes) ? streetCrimes : []), ...(Array.isArray(neighbourhoodCrimes) ? neighbourhoodCrimes : [])];
+      
+      // Deduplicate by ID
+      const uniqueCrimes = Array.from(new Map(combined.map(c => [c.id, c])).values());
+
+      return uniqueCrimes.map((c: any) => {
+        const cLat = c.location?.latitude ? parseFloat(c.location.latitude) : lat;
+        const cLng = c.location?.longitude ? parseFloat(c.location.longitude) : lng;
+        return {
+          ...c,
+          distance: getDistance(lat, lng, cLat, cLng)
+        };
+      });
+    })());
   }
 
   const allMonthsCrimes = await Promise.all(fetchPromises);

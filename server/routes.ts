@@ -18,7 +18,7 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return Math.round(distance * 100) / 100; // Return precision to 2 decimal places (10m accuracy)
 }
 
-function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number, nearestPostcodes: string[], streetName: string) {
+function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number, nearestPostcodes: string[], streetName: string, neighbourhoodInfo: any) {
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -298,22 +298,22 @@ async function fetchAreaMetrics(postcode: string) {
     
     let url = `https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`;
     if (neighbourhoodInfo) {
-      // Use neighbourhood specific search if available
-      // Note: The API documentation suggests 'crimes-at-location' or 'crimes-no-location' for specific points,
-      // but the user specifically asked to use the neighbourhood specific search.
-      // However, the standard crime search by lat/lng is generally more precise for a specific postcode.
-      // If we use the neighbourhood boundary, it might be too broad.
-      // Let's stick to the lat/lng search for "crimes-street" as it's what they had before,
-      // but perhaps the user wants to see crimes FOR that neighbourhood.
+      // The user specifically asked to use the neighbourhood specific search:
+      // https://data.police.uk/api/crimes-no-location?category=all-crime&force=leicestershire&neighbourhood=NC04&date=2013-01
+      url = `https://data.police.uk/api/crimes-no-location?category=all-crime&force=${neighbourhoodInfo.url_force}&neighbourhood=${neighbourhoodInfo.id}&date=${dateStr}`;
     }
 
     fetchPromises.push(
       fetch(url)
         .then(async res => res.ok ? res.json() : [])
-        .then(data => (Array.isArray(data) ? data : []).map((c: any) => ({
-          ...c,
-          distance: getDistance(lat, lng, parseFloat(c.location.latitude), parseFloat(c.location.longitude))
-        })).filter((c: any) => c.distance <= 1.0))
+        .then(data => (Array.isArray(data) ? data : []).map((c: any) => {
+          const cLat = c.location?.latitude ? parseFloat(c.location.latitude) : lat;
+          const cLng = c.location?.longitude ? parseFloat(c.location.longitude) : lng;
+          return {
+            ...c,
+            distance: getDistance(lat, lng, cLat, cLng)
+          };
+        }))
         .catch(() => [])
     );
   }
@@ -350,7 +350,7 @@ async function fetchAreaMetrics(postcode: string) {
 
   const nearestPostcodes = await fetchNearest();
   
-  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName);
+  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo);
 }
 
 // Scoring Logic

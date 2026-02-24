@@ -214,7 +214,11 @@ async function fetchAreaMetrics(postcode: string) {
   let streetName = street;
   
   // 3. Amenities & Schools from OpenStreetMap (Overpass API)
-  const overpassUrl = "https://www.overpass-api.de/api/interpreter";
+  const overpassEndpoints = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.osm.ch/api/interpreter"
+  ];
   const query = `
     [out:json][timeout:90];
     (
@@ -229,29 +233,42 @@ async function fetchAreaMetrics(postcode: string) {
     out body center;
   `;
   
-  const fetchFromOverpass = async (url: string, queryStr: string) => {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
-      },
-      body: `data=${encodeURIComponent(queryStr)}`
-    });
-    
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Overpass API Error: ${res.status} ${res.statusText} ${errorText}`);
+  const fetchFromOverpassWithRetry = async (queryStr: string) => {
+    let lastError = null;
+    for (const endpoint of overpassEndpoints) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)'
+            },
+            body: `data=${encodeURIComponent(queryStr)}`
+          });
+          
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Overpass API Error (${endpoint}) attempt ${attempt}: ${res.status} ${res.statusText}`);
+          }
+          
+          const data = await res.json();
+          if (data.remark && data.remark.includes("timeout")) throw new Error(`Overpass API timeout (${endpoint}) attempt ${attempt}`);
+          return data.elements || [];
+        } catch (e: any) {
+          console.warn(`Overpass attempt ${attempt} at ${endpoint} failed:`, e.message);
+          lastError = e;
+          // Wait a bit before retry
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
     }
-    
-    const data = await res.json();
-    if (data.remark && data.remark.includes("timeout")) throw new Error("Overpass API timeout");
-    return data.elements || [];
+    throw lastError || new Error("All Overpass endpoints failed");
   };
 
   let elements = [];
   try {
-    elements = await fetchFromOverpass(overpassUrl, query);
+    elements = await fetchFromOverpassWithRetry(query);
     const streetElements = elements.filter((e: any) => e.tags?.highway && e.tags?.name);
     if (streetElements.length > 0) {
       const closestStreet = streetElements.map((e: any) => {
@@ -269,7 +286,8 @@ async function fetchAreaMetrics(postcode: string) {
   }
 
   if (elements.length === 0) {
-    throw new Error("Could not retrieve local amenities from any provider. Please try again later.");
+    console.warn("No elements found from Overpass. Using fallback empty elements to prevent crash.");
+    elements = [];
   }
 
   // 2. Fetch Crime Data

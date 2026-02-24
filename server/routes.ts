@@ -292,9 +292,11 @@ async function fetchAreaMetrics(postcode: string) {
     console.error("Neighbourhood locate failed:", e);
   }
 
+  let lastDateStr = "";
   for (let i = 1; i <= monthsToFetch; i++) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    lastDateStr = dateStr;
     
     let url = `https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`;
     // The user specifically asked to use the neighbourhood specific search, but it often returns no results 
@@ -388,7 +390,7 @@ async function fetchAreaMetrics(postcode: string) {
           longitude: lng + (Math.random() - 0.5) * 0.01
         },
         distance: Math.random() * 1.0,
-        month: dateStr // using last dateStr from loop
+        month: lastDateStr // using lastDateStr from loop
       });
     }
     crimesData.push(...simulatedCrimes);

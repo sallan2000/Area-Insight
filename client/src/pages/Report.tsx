@@ -518,7 +518,7 @@ export default function Report() {
                   title="Safety"
                   score={scores.safety}
                   icon={<Shield className="w-6 h-6" />}
-                  description={raw.neighbourhood ? `Area: ${raw.neighbourhood.name}` : `${raw.crimeCount || 0} incidents reported in the last 12 months (within 1km)`}
+                  description={`${raw.crimeCount || 0} incidents reported in the last 12 months`}
                   status={getOverallGrade(scores.safety)}
                   trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
                   isActive={activeTab === 'safety'}
@@ -593,11 +593,10 @@ export default function Report() {
                                 <h5 className="text-sm font-bold text-primary mb-1">Police Neighbourhood: {raw.neighbourhood.name}</h5>
                                 {raw.neighbourhood.description && (
                                   <div 
-                                    className="text-xs text-muted-foreground line-clamp-3 mb-2"
+                                    className="text-xs text-muted-foreground line-clamp-3"
                                     dangerouslySetInnerHTML={{ __html: raw.neighbourhood.description }}
                                   />
                                 )}
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-tight">Population: {raw.neighbourhood.population || 'Unknown'}</p>
                               </div>
                             )}
                             <div className="space-y-3">

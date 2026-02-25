@@ -18,7 +18,7 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   return Math.round(distance * 100) / 100; // Return precision to 2 decimal places (10m accuracy)
 }
 
-function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number, nearestPostcodes: string[], streetName: string, neighbourhoodInfo: any) {
+async function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number, nearestPostcodes: string[], streetName: string, neighbourhoodInfo: any) {
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -505,7 +505,7 @@ async function fetchAreaMetrics(postcode: string) {
 
   const nearestPostcodes = await fetchNearest();
   
-  return processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo);
+  return await processElements(elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo);
 }
 
 // Scoring Logic

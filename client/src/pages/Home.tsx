@@ -18,7 +18,7 @@ export default function Home() {
     if (!cleanPostcode) {
       toast({
         title: "Postcode required",
-        description: "Please enter a UK postcode to continue.",
+        description: "Please enter a UK postcode.",
         variant: "destructive",
       });
       return;
@@ -27,7 +27,7 @@ export default function Home() {
     if (!postcodeRegex.test(cleanPostcode)) {
       toast({
         title: "Invalid postcode",
-        description: "Please enter a valid UK postcode format (e.g. SW1A 1AA).",
+        description: "Please enter a valid UK postcode format.",
         variant: "destructive",
       });
       return;

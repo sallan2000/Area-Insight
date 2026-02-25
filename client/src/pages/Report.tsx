@@ -69,7 +69,7 @@ export default function Report() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { data: report, isLoading, error } = useAssessment(Number(id));
-  const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | 'environment' | null>(null);
+  const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
 
   // Set initial active tab based on scores and crime count
   useEffect(() => {
@@ -77,7 +77,7 @@ export default function Report() {
       const scores = report.scores as any;
       const raw = report.rawMetrics as any;
       
-      const tabOptions: ('safety' | 'transport' | 'schools' | 'amenities' | 'environment')[] = ['safety', 'transport', 'schools', 'amenities', 'environment'];
+      const tabOptions: ('safety' | 'transport' | 'schools' | 'amenities')[] = ['safety', 'transport', 'schools', 'amenities'];
       // Filter out null scores if any and sort
       const sortedTabs = [...tabOptions].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));
       
@@ -545,15 +545,6 @@ export default function Report() {
                   isActive={activeTab === 'amenities'}
                   onClick={() => setActiveTab('amenities')}
                 />
-                <MetricCard
-                  title="Environment"
-                  score={85}
-                  icon={<Wind className="w-6 h-6" />}
-                  description={`AQI: ${raw.environment?.airQuality?.level || 'Good'}`}
-                  status={getOverallGrade(85)}
-                  isActive={activeTab === 'environment'}
-                  onClick={() => setActiveTab('environment')}
-                />
               </div>
             </div>
 
@@ -659,56 +650,6 @@ export default function Report() {
                             </div>
                           </div>
                         )}
-                        {activeTab === 'environment' && raw.environment && (
-                          <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <Card className="p-4 border-none bg-blue-50/50">
-                                <div className="flex items-center gap-3 mb-3">
-                                  <Wind className="w-5 h-5 text-blue-600" />
-                                  <h5 className="font-bold text-sm">Air Quality</h5>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-2xl font-bold text-blue-700">{raw.environment.airQuality.level}</p>
-                                  <p className="text-xs text-blue-600/80">{raw.environment.airQuality.description}</p>
-                                </div>
-                              </Card>
-                              <Card className="p-4 border-none bg-orange-50/50">
-                                <div className="flex items-center gap-3 mb-3">
-                                  <Volume2 className="w-5 h-5 text-orange-600" />
-                                  <h5 className="font-bold text-sm">Noise Exposure</h5>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-2xl font-bold text-orange-700">{raw.environment.noise.level}</p>
-                                  <p className="text-xs text-orange-600/80">Day: {raw.environment.noise.day}dB | Night: {raw.environment.noise.night}dB</p>
-                                </div>
-                              </Card>
-                              <Card className="p-4 border-none bg-emerald-50/50">
-                                <div className="flex items-center gap-3 mb-3">
-                                  <Waves className="w-5 h-5 text-emerald-600" />
-                                  <h5 className="font-bold text-sm">Flood Risk</h5>
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="text-2xl font-bold text-emerald-700">{raw.environment.floodRisk.likelihood}</p>
-                                  <p className="text-xs text-emerald-600/80">{raw.environment.floodRisk.description}</p>
-                                </div>
-                              </Card>
-                            </div>
-                            
-                            {raw.environment.airQuality.pollutants?.length > 0 && (
-                              <div className="mt-4">
-                                <h6 className="text-xs font-bold text-muted-foreground uppercase mb-3">Live Pollutant Levels</h6>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                  {raw.environment.airQuality.pollutants.map((p: any, i: number) => (
-                                    <div key={i} className="bg-white p-3 rounded-xl border border-border shadow-sm">
-                                      <p className="text-[10px] text-muted-foreground font-bold">{p.name}</p>
-                                      <p className="text-sm font-bold text-foreground">{p.value.toFixed(1)} <span className="text-[10px] font-normal">{p.unit}</span></p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
                         {activeTab === 'amenities' && (
                           <div className="space-y-6">
                             {Object.entries(
@@ -733,6 +674,98 @@ export default function Report() {
               </div>
             </section>
           </section>
+
+          {/* Environment Section */}
+          {raw.environment && (
+            <section className="space-y-6">
+              <h3 className="text-xl font-display font-bold px-1">Environmental Quality</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="bg-white border-border shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
+                        <Wind className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold">Air Quality</h4>
+                        <p className="text-sm text-muted-foreground">Local pollutant status</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-2xl font-bold text-blue-700">{raw.environment.airQuality.level}</p>
+                      <p className="text-sm text-muted-foreground leading-snug">{raw.environment.airQuality.description}</p>
+                      
+                      {raw.environment.airQuality.pollutants?.length > 0 && (
+                        <div className="pt-4 grid grid-cols-2 gap-2">
+                          {raw.environment.airQuality.pollutants.slice(0, 4).map((p: any, i: number) => (
+                            <div key={i} className="bg-gray-50 p-2 rounded-lg border border-border">
+                              <p className="text-[10px] text-muted-foreground font-bold">{p.name}</p>
+                              <p className="text-xs font-bold text-foreground">{p.value.toFixed(1)} {p.unit}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-border shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-orange-50 rounded-xl text-orange-600">
+                        <Volume2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold">Noise Exposure</h4>
+                        <p className="text-sm text-muted-foreground">Ambient sound levels</p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-orange-50/50 rounded-xl text-center border border-orange-100">
+                        <p className="text-2xl font-bold text-orange-700">{raw.environment.noise.level}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase font-bold">Daytime</p>
+                          <p className="text-sm font-bold">{raw.environment.noise.day}dB</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground uppercase font-bold">Nighttime</p>
+                          <p className="text-sm font-bold">{raw.environment.noise.night}dB</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white border-border shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                        <Waves className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold">Flood Risk</h4>
+                        <p className="text-sm text-muted-foreground">EA likelihood assessment</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-2xl font-bold text-emerald-700">{raw.environment.floodRisk.likelihood}</p>
+                      <p className="text-sm text-muted-foreground leading-snug">{raw.environment.floodRisk.description}</p>
+                      <div className="mt-4 pt-4 border-t border-border">
+                        <div className="flex justify-between items-center text-xs font-medium">
+                          <span className="text-muted-foreground">Suitability</span>
+                          <span className="text-emerald-700 font-bold px-2 py-0.5 bg-emerald-50 rounded-md">
+                            {raw.environment.floodRisk.suitability}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </section>
+          )}
 
           {/* Connectivity Section */}
           <section className="space-y-6">

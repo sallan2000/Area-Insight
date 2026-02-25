@@ -709,6 +709,7 @@ export default function Report() {
                             )}
                           </div>
                         )}
+                        {activeTab === 'amenities' && (
                           <div className="space-y-6">
                             {Object.entries(
                               (raw.amenities?.list || []).reduce((acc: any, item: any) => {

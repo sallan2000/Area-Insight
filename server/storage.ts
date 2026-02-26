@@ -19,6 +19,24 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async createAssessment(insertAssessment: InsertAssessment): Promise<Assessment> {
+    const cleanPostcode = insertAssessment.postcode.toUpperCase();
+    const existing = await this.getAssessmentByPostcode(cleanPostcode);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(assessments)
+        .set({
+          lat: insertAssessment.lat,
+          lng: insertAssessment.lng,
+          rawMetrics: insertAssessment.rawMetrics,
+          scores: insertAssessment.scores,
+          lastSearchedAt: new Date(),
+        })
+        .where(eq(assessments.id, existing.id))
+        .returning();
+      return updated;
+    }
+
     const [assessment] = await db.insert(assessments)
       .values(insertAssessment)
       .returning();
@@ -33,17 +51,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined> {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
     const [assessment] = await db.select()
       .from(assessments)
-      .where(
-        and(
-          eq(assessments.postcode, postcode),
-          gt(assessments.lastSearchedAt, thirtyDaysAgo)
-        )
-      )
+      .where(eq(assessments.postcode, postcode))
       .limit(1);
     return assessment;
   }

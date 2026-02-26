@@ -555,10 +555,19 @@ export async function registerRoutes(
       const { postcode } = api.assess.create.input.parse(req.body);
       const cleanPostcode = postcode.trim().toUpperCase();
       const cached = await storage.getAssessmentByPostcode(cleanPostcode);
+      
       if (cached) {
-        await storage.updateLastSearchedAt(cached.id);
-        return res.status(200).json(cached);
+        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
+        const isFresh = (Date.now() - lastSearchedAt) < thirtyDaysInMs;
+
+        if (isFresh) {
+          await storage.updateLastSearchedAt(cached.id);
+          return res.status(200).json(cached);
+        }
+        // If not fresh, we fall through to fetch new data and update
       }
+
       const data = await fetchAreaMetrics(cleanPostcode);
       const scores = calculateScores(data.metrics);
       const assessment = await storage.createAssessment({

@@ -10,7 +10,7 @@ export default function NotFound() {
         </div>
         <h1 className="text-4xl font-display font-bold text-foreground mb-2">404</h1>
         <p className="text-lg text-muted-foreground mb-6">
-          Oops! The page you're looking cannot be found.
+          Sorry! The page you're looking cannot be found.
         </p>
 
         <Link href="/" className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl text-white bg-primary hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30">

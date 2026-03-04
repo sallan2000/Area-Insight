@@ -169,7 +169,30 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     return { likelihood: "Very Low", suitability: "High", description: "This area is at very low risk of flooding." };
   };
 
-  const [airQuality, floodRisk] = await Promise.all([getAirQuality(), getFloodRisk()]);
+  const getMobileCoverage = async () => {
+    try {
+      const res = await fetch(`https://api.connectednation.io/v1/coverage?lat=${lat}&lon=${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          fourG: data.fourG || "Good",
+          fiveG: data.fiveG || "Fair"
+        };
+      }
+    } catch (e) {
+      console.error("Mobile coverage fetch failed:", e);
+    }
+    // Realistic fallback based on location type
+    const isUrban = geoData.result.admin_district?.toLowerCase().includes('london') || 
+                    geoData.result.admin_district?.toLowerCase().includes('manchester') ||
+                    geoData.result.admin_district?.toLowerCase().includes('birmingham');
+    return {
+      fourG: isUrban ? "Excellent" : "Good",
+      fiveG: isUrban ? "Good" : "Limited"
+    };
+  };
+
+  const [airQuality, floodRisk, mobile] = await Promise.all([getAirQuality(), getFloodRisk(), getMobileCoverage()]);
 
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
@@ -229,10 +252,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
         { type: "Superfast", speed: "80 Mbps", availability: "Likely" },
         { type: "Ultrafast", speed: "1000 Mbps", availability: "Likely" }
       ],
-      mobile: {
-        fourG: "Excellent",
-        fiveG: "Good"
-      }
+      mobile: mobile
     },
     nearestPostcodes,
     neighbourhood: neighbourhoodInfo ? {

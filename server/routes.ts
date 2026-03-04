@@ -192,7 +192,48 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     };
   };
 
-  const [airQuality, floodRisk, mobile] = await Promise.all([getAirQuality(), getFloodRisk(), getMobileCoverage()]);
+  const getBroadbandAvailability = async () => {
+    try {
+      // Mocking USwitch-style lookup logic based on location
+      const isUrban = geoData.result.admin_district?.toLowerCase().includes('london') || 
+                      geoData.result.admin_district?.toLowerCase().includes('manchester') ||
+                      geoData.result.admin_district?.toLowerCase().includes('birmingham');
+      
+      const isVeryRural = geoData.result.admin_district?.toLowerCase().includes('highlands') || 
+                          geoData.result.admin_district?.toLowerCase().includes('islands');
+
+      if (isVeryRural) {
+        return [
+          { type: "Standard", speed: "5 Mbps", availability: "Likely" },
+          { type: "Superfast", speed: "24 Mbps", availability: "Possible" },
+          { type: "Ultrafast", speed: "N/A", availability: "Unlikely" }
+        ];
+      }
+
+      if (isUrban) {
+        return [
+          { type: "Standard", speed: "11 Mbps", availability: "Likely" },
+          { type: "Superfast", speed: "80 Mbps", availability: "Likely" },
+          { type: "Ultrafast", speed: "1000 Mbps", availability: "Likely" }
+        ];
+      }
+
+      return [
+        { type: "Standard", speed: "11 Mbps", availability: "Likely" },
+        { type: "Superfast", speed: "60 Mbps", availability: "Likely" },
+        { type: "Ultrafast", speed: "300 Mbps", availability: "Possible" }
+      ];
+    } catch (e) {
+      console.error("Broadband availability fetch failed:", e);
+    }
+    return [
+      { type: "Standard", speed: "11 Mbps", availability: "Likely" },
+      { type: "Superfast", speed: "80 Mbps", availability: "Likely" },
+      { type: "Ultrafast", speed: "1000 Mbps", availability: "Likely" }
+    ];
+  };
+
+  const [airQuality, floodRisk, mobile, broadband] = await Promise.all([getAirQuality(), getFloodRisk(), getMobileCoverage(), getBroadbandAvailability()]);
 
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
@@ -247,11 +288,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       lookupUrl: councilTaxLink
     },
     connectivity: {
-      broadband: [
-        { type: "Standard", speed: "11 Mbps", availability: "Likely" },
-        { type: "Superfast", speed: "80 Mbps", availability: "Likely" },
-        { type: "Ultrafast", speed: "1000 Mbps", availability: "Likely" }
-      ],
+      broadband: broadband,
       mobile: mobile
     },
     nearestPostcodes,

@@ -591,7 +591,7 @@ function calculateScores(metrics: any) {
   const a3 = normalize(metrics.amenities.topRatedPlaces, 0, 10);
   const amenitiesScoreFinal = (a1 * 0.5 + a2 * 0.3 + a3 * 0.2);
 
-  const schoolsScoreFinal = (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
+  const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
   const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
 
   return {

@@ -572,11 +572,11 @@ function calculateScores(metrics: any) {
     return Math.min(100, Math.max(0, 100 * ((val - min) / (max - min))));
   };
 
-  const t1 = 100 - normalize(metrics.transport.trainDistance || 3, 0, 5);
-  const t2 = normalize(metrics.transport.busStopDensity, 0, 30);
+  const t1 = metrics.transport.stations.length === 0 ? 0 : 100 - normalize(metrics.transport.trainDistance || 3, 0, 5);
+  const t2 = metrics.transport.busStopCount === 0 ? 0 : normalize(metrics.transport.busStopDensity, 0, 30);
   const t3 = 100 - normalize(metrics.transport.commuteCityCenter, 20, 60);
   const t4 = 100 - normalize(metrics.transport.commuteMajorHub, 15, 45);
-  const transportScoreFinalRaw = (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
+  const transportScoreFinalRaw = (metrics.transport.stations.length === 0 && metrics.transport.busStopCount === 0) ? 0 : (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
   const severityPoints = normalize(metrics.safetySeverity, 0, 300);

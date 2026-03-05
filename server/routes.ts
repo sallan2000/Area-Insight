@@ -308,7 +308,8 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     metrics: {
       ...resultMetrics,
       street: streetName || street,
-      classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area"
+      classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
+      isScotland: geoData.result.country === 'Scotland'
     }
   };
 }
@@ -572,7 +573,7 @@ async function fetchAreaMetrics(postcode: string) {
 }
 
 // Scoring Logic
-function calculateScores(metrics: any) {
+function calculateScores(metrics: any, isScotland: boolean) {
   const normalize = (val: number, min: number, max: number) => {
     if (max === min) return 50;
     return Math.min(100, Math.max(0, 100 * ((val - min) / (max - min))));
@@ -586,7 +587,6 @@ function calculateScores(metrics: any) {
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
   const severityPoints = normalize(metrics.safetySeverity, 0, 300);
-  const isScotland = geoData.result.country === 'Scotland';
   const regionalDensityMultiplier = isScotland ? 1.4 : 1.0;
   const crimeDensity = (metrics.crimeCount / 3.14) * regionalDensityMultiplier; 
   const crimeDensityPoints = normalize(crimeDensity, 0, 500);
@@ -634,7 +634,7 @@ export async function registerRoutes(
       }
 
       const data = await fetchAreaMetrics(cleanPostcode);
-      const scores = calculateScores(data.metrics);
+      const scores = calculateScores(data.metrics, data.metrics.isScotland);
       const assessment = await storage.createAssessment({
         postcode: cleanPostcode,
         lat: data.lat,
@@ -649,7 +649,7 @@ export async function registerRoutes(
         const fetchWithRetry = async (pc: string, retries = 2) => {
           try {
             const pcData = await fetchAreaMetrics(pc);
-            const pcScores = calculateScores(pcData.metrics);
+            const pcScores = calculateScores(pcData.metrics, pcData.metrics.isScotland);
             await storage.createAssessment({
               postcode: pc.toUpperCase(),
               lat: pcData.lat,

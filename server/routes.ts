@@ -543,7 +543,13 @@ async function fetchAreaMetrics(postcode: string) {
   const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour' || c.category === 'public-order').length;
   const vehicleCrimes = crimesData.filter((c: any) => c.category === 'vehicle-crime').length;
   const drugCrimes = crimesData.filter((c: any) => c.category === 'drugs').length;
-  const severityScore = (violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1) + (vehicleCrimes * 2) + (drugCrimes * 2);
+  
+  // Adjust severity points based on region to mitigate reporting differences
+  // Scotland often has different reporting thresholds or categories, and rural areas have extremely low baselines.
+  const isScotland = geoData.result.country === 'Scotland';
+  const regionalMultiplier = isScotland ? 1.5 : 1.0; 
+  
+  const severityScore = ((violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1) + (vehicleCrimes * 2) + (drugCrimes * 2)) * regionalMultiplier;
 
   // 4. Fetch Nearest Postcodes
   const fetchNearest = async () => {
@@ -580,7 +586,9 @@ function calculateScores(metrics: any) {
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
   const severityPoints = normalize(metrics.safetySeverity, 0, 300);
-  const crimeDensity = metrics.crimeCount / 3.14; 
+  const isScotland = geoData.result.country === 'Scotland';
+  const regionalDensityMultiplier = isScotland ? 1.4 : 1.0;
+  const crimeDensity = (metrics.crimeCount / 3.14) * regionalDensityMultiplier; 
   const crimeDensityPoints = normalize(crimeDensity, 0, 500);
   const safetyBase = 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.7);
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);

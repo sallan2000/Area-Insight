@@ -593,11 +593,11 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const transportScoreFinalRaw = (metrics.transport.stations.length === 0 && metrics.transport.busStopCount === 0) ? 0 : (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
-  const severityPoints = normalize(metrics.safetySeverity, 0, 150);
-  const regionalDensityMultiplier = isScotland ? 1.0 : 0.6; // Lowering weight for E&W/NI as they are neighbourhood-wide
+  const severityPoints = normalize(metrics.safetySeverity, 0, isScotland ? 150 : 800);
+  const regionalDensityMultiplier = isScotland ? 1.0 : 0.3; // Significantly lowering weight for E&W/NI
   const crimeDensity = (metrics.crimeCount / 3.14) * regionalDensityMultiplier; 
-  const crimeDensityPoints = normalize(crimeDensity, 0, 300);
-  const safetyBase = 100 - (crimeDensityPoints * 0.45) - (severityPoints * 0.55);
+  const crimeDensityPoints = normalize(crimeDensity, 0, isScotland ? 300 : 1000);
+  const safetyBase = 100 - (crimeDensityPoints * 0.4) - (severityPoints * 0.6);
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));
 

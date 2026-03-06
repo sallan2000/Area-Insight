@@ -18,13 +18,18 @@ import {
   Wifi,
   Signal,
   Download,
-  Facebook,
-  Twitter,
-  Linkedin,
   Wind,
   Volume2,
   Waves
 } from "lucide-react";
+import {
+  FacebookShareButton,
+  TwitterShareButton,
+  LinkedinShareButton,
+  FacebookIcon,
+  TwitterIcon,
+  LinkedinIcon,
+} from "react-share";
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { useRef, useState, useEffect } from "react";
@@ -209,7 +214,7 @@ export default function Report() {
       twitter: `https://twitter.com/intent/tweet?url=${url}&text=${text}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${url}`
     };
-    window.open(links[platform], '_blank');
+    window.open(links[platform as keyof typeof links], '_blank');
   };
 
   if (isLoading) {
@@ -321,16 +326,16 @@ export default function Report() {
               </Button>
             </div>
 
-            <div className="flex justify-center gap-4 py-2 border-y">
-              <Button size="icon" variant="ghost" onClick={() => shareSocial('facebook')} title="Share on Facebook">
-                <Facebook className="h-5 w-5 text-blue-600" />
-              </Button>
-              <Button size="icon" variant="ghost" onClick={() => shareSocial('twitter')} title="Share on Twitter">
-                <Twitter className="h-5 w-5 text-sky-500" />
-              </Button>
-              <Button size="icon" variant="ghost" onClick={() => shareSocial('linkedin')} title="Share on LinkedIn">
-                <Linkedin className="h-5 w-5 text-blue-700" />
-              </Button>
+            <div className="flex justify-center gap-6 py-4 border-y">
+              <FacebookShareButton url={reportUrl} quote={`Check out the liveability report for ${report.postcode} on ScoreMyStreet!`}>
+                <FacebookIcon size={40} round />
+              </FacebookShareButton>
+              <TwitterShareButton url={reportUrl} title={`Check out the liveability report for ${report.postcode} on ScoreMyStreet!`}>
+                <TwitterIcon size={40} round />
+              </TwitterShareButton>
+              <LinkedinShareButton url={reportUrl} title={`Liveability Report for ${report.postcode}`} summary="Check out this neighborhood assessment on ScoreMyStreet!">
+                <LinkedinIcon size={40} round />
+              </LinkedinShareButton>
             </div>
 
             <div className="space-y-2">

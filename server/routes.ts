@@ -456,14 +456,21 @@ async function fetchAreaMetrics(postcode: string) {
 
     fetchPromises.push((async () => {
       const streetCrimes = await fetchCrimeData(`https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}&date=${dateStr}`);
-      let neighbourhoodCrimes: any[] = [];
       
+      // Filter streetCrimes to only include those within a 1.5km radius to ensure local relevance
+      const localStreetCrimes = (Array.isArray(streetCrimes) ? streetCrimes : []).filter((c: any) => {
+        const cLat = c.location?.latitude ? parseFloat(c.location.latitude) : lat;
+        const cLng = c.location?.longitude ? parseFloat(c.location.longitude) : lng;
+        return getDistance(lat, lng, cLat, cLng) <= 1.5;
+      });
+
+      let neighbourhoodCrimes: any[] = [];
       if (neighbourhoodInfo) {
-        // Try the "crimes-no-location" as requested, but also maybe they meant "crimes-at-location"
+        // We still fetch neighbourhood crimes but we'll be more selective
         neighbourhoodCrimes = await fetchCrimeData(`https://data.police.uk/api/crimes-no-location?category=all-crime&force=${neighbourhoodInfo.url_force}&neighbourhood=${neighbourhoodInfo.id}&date=${dateStr}`);
       }
 
-      const combined = [...(Array.isArray(streetCrimes) ? streetCrimes : []), ...(Array.isArray(neighbourhoodCrimes) ? neighbourhoodCrimes : [])];
+      const combined = [...localStreetCrimes, ...(Array.isArray(neighbourhoodCrimes) ? neighbourhoodCrimes : [])];
       
       // Deduplicate by ID
       const uniqueCrimes = Array.from(new Map(combined.map(c => [c.id, c])).values());
@@ -586,11 +593,11 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const transportScoreFinalRaw = (metrics.transport.stations.length === 0 && metrics.transport.busStopCount === 0) ? 0 : (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
-  const severityPoints = normalize(metrics.safetySeverity, 0, 300);
-  const regionalDensityMultiplier = isScotland ? 1.4 : 1.0;
+  const severityPoints = normalize(metrics.safetySeverity, 0, 150);
+  const regionalDensityMultiplier = isScotland ? 1.0 : 0.6; // Lowering weight for E&W/NI as they are neighbourhood-wide
   const crimeDensity = (metrics.crimeCount / 3.14) * regionalDensityMultiplier; 
-  const crimeDensityPoints = normalize(crimeDensity, 0, 500);
-  const safetyBase = 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.7);
+  const crimeDensityPoints = normalize(crimeDensity, 0, 300);
+  const safetyBase = 100 - (crimeDensityPoints * 0.45) - (severityPoints * 0.55);
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));
 

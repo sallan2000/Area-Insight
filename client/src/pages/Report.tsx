@@ -28,6 +28,7 @@ import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
+import { LockedMap } from "@/components/LockedMap";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -450,20 +451,10 @@ export default function Report() {
 
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative group">
-                <div className="w-full h-full min-h-[400px]">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0, minHeight: '400px' }}
-                    loading="lazy"
-                    allowFullScreen
-                    referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report.lng)-0.002}%2C${Number(report.lat)-0.002}%2C${Number(report.lng)+0.002}%2C${Number(report.lat)+0.002}&layer=mapnik&marker=${report.lat}%2C${report.lng}`}
-                  ></iframe>
-                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-primary" />
-                    <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
-                  </div>
+                <LockedMap lat={Number(report.lat)} lng={Number(report.lng)} postcode={report.postcode} />
+                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full border border-border shadow-sm flex items-center gap-2 z-10">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-medium text-foreground">Centered on {report.postcode}</span>
                 </div>
               </div>
 

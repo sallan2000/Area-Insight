@@ -51,11 +51,12 @@ export function LockedMap({ lat, lng, postcode }: LockedMapProps) {
         center: [lat, lng],
         zoom: 16,
         dragging: false,
-        touchZoom: true,
-        scrollWheelZoom: true,
-        doubleClickZoom: true,
+        touchZoom: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
         boxZoom: false,
         keyboard: false,
+        zoomControl: true,
       });
 
       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

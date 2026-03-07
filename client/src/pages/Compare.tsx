@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LoadingModal } from "@/components/LoadingModal";
+import { LockedMap } from "@/components/LockedMap";
 
 export default function Compare() {
   const [, setLocation] = useLocation();
@@ -319,26 +320,10 @@ export default function Compare() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:col-span-2">
                 <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative min-h-[300px]">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0, minHeight: '300px' }}
-                    loading="lazy"
-                    allowFullScreen
-                    referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report1.lng)-0.002}%2C${Number(report1.lat)-0.002}%2C${Number(report1.lng)+0.002}%2C${Number(report1.lat)+0.002}&layer=mapnik&marker=${report1.lat}%2C${report1.lng}`}
-                  ></iframe>
+                  <LockedMap lat={Number(report1.lat)} lng={Number(report1.lng)} postcode={report1.postcode} />
                 </div>
                 <div className="bg-white rounded-2xl p-1 shadow-sm border border-border overflow-hidden relative min-h-[300px]">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0, minHeight: '300px' }}
-                    loading="lazy"
-                    allowFullScreen
-                    referrerPolicy="no-referrer-when-downgrade"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(report2.lng)-0.002}%2C${Number(report2.lat)-0.002}%2C${Number(report2.lng)+0.002}%2C${Number(report2.lat)+0.002}&layer=mapnik&marker=${report2.lat}%2C${report2.lng}`}
-                  ></iframe>
+                  <LockedMap lat={Number(report2.lat)} lng={Number(report2.lng)} postcode={report2.postcode} />
                 </div>
               </div>
 

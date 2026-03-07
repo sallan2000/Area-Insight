@@ -22,14 +22,6 @@ import {
   Volume2,
   Waves
 } from "lucide-react";
-import {
-  FacebookShareButton,
-  TwitterShareButton,
-  LinkedinShareButton,
-  FacebookIcon,
-  TwitterIcon,
-  LinkedinIcon,
-} from "react-share";
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { useRef, useState, useEffect } from "react";
@@ -326,16 +318,16 @@ export default function Report() {
               </Button>
             </div>
 
-            <div className="flex justify-center gap-6 py-4 border-y">
-              <FacebookShareButton url={reportUrl} quote={`Check out the liveability report for ${report.postcode} on ScoreMyStreet!`}>
-                <FacebookIcon size={40} round />
-              </FacebookShareButton>
-              <TwitterShareButton url={reportUrl} title={`Check out the liveability report for ${report.postcode} on ScoreMyStreet!`}>
-                <TwitterIcon size={40} round />
-              </TwitterShareButton>
-              <LinkedinShareButton url={reportUrl} title={`Liveability Report for ${report.postcode}`} summary="Check out this neighborhood assessment on ScoreMyStreet!">
-                <LinkedinIcon size={40} round />
-              </LinkedinShareButton>
+            <div className="flex justify-center gap-4 py-2 border-y">
+              <Button size="icon" variant="ghost" onClick={() => shareSocial('facebook')} title="Share on Facebook">
+                <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => shareSocial('twitter')} title="Share on Twitter">
+                <svg className="h-5 w-5 text-sky-500" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 002.856 2.871c-.025.355-.049.71-.049 1.067a10.064 10.064 0 01-10.033 10.034c-3.181 0-6.156-1.003-8.614-2.863.324.037.636.074.924.074a7.1 7.1 0 004.010-1.229 3.543 3.543 0 01-3.296-2.456 3.542 3.542 0 001.604-.896 3.542 3.542 0 01-2.812-3.474 3.54 3.54 0 00.611 1.598A3.53 3.53 0 00.27 12.8a10.055 10.055 0 008.063-2.853 3.543 3.543 0 01-.987-4.735c1.164-1.165 3.025-1.165 4.188 0a3.5 3.5 0 012.516 1.08 7.082 7.082 0 002.155-2.773c-.299.934-.922 1.729-1.77 2.235a7.134 7.134 0 002.019-.584 7.15 7.15 0 01-1.767 1.838z"/></svg>
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => shareSocial('linkedin')} title="Share on LinkedIn">
+                <svg className="h-5 w-5 text-blue-700" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.475-2.236-1.986-2.236-1.081 0-1.722.722-2.004 1.418-.103.249-.129.597-.129.946v5.441h-3.554s.05-8.736 0-9.646h3.554v1.364c.43-.664 1.199-1.608 2.925-1.608 2.135 0 3.735 1.39 3.735 4.38v5.51zM5.337 9.432c-1.144 0-1.915-.758-1.915-1.708 0-.951.77-1.708 1.915-1.708 1.144 0 1.915.757 1.915 1.708 0 .95-.771 1.708-1.915 1.708zm1.946 11.02H3.391V9.806h3.892v10.646zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/></svg>
+              </Button>
             </div>
 
             <div className="space-y-2">

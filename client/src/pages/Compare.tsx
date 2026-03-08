@@ -35,6 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { LoadingModal } from "@/components/LoadingModal";
 import { LockedMap } from "@/components/LockedMap";
+import { UserMenu } from "@/components/UserMenu";
 
 export default function Compare() {
   const [, setLocation] = useLocation();
@@ -229,12 +230,15 @@ export default function Compare() {
             </Button>
             <h1 className="text-2xl font-display font-bold text-foreground">Compare Areas</h1>
           </div>
-          {report1 && report2 && (
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
-              <Share2 className="w-4 h-4" />
-              Share & Export
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {report1 && report2 && (
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
+                <Share2 className="w-4 h-4" />
+                Share & Export
+              </Button>
+            )}
+            <UserMenu />
+          </div>
         </div>
       </header>
 

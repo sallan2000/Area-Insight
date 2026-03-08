@@ -1,6 +1,8 @@
-import { pgTable, text, serial, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, jsonb, timestamp, varchar, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+export * from "./models/auth";
 
 const postcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]? [0-9][A-Z]{2}$/i;
 
@@ -9,10 +11,18 @@ export const assessments = pgTable("assessments", {
   postcode: text("postcode").notNull(),
   lat: text("lat").notNull(),
   lng: text("lng").notNull(),
-  rawMetrics: jsonb("raw_metrics").notNull(), // Stores raw data counts
-  scores: jsonb("scores").notNull(), // Stores calculated 0-100 scores
+  rawMetrics: jsonb("raw_metrics").notNull(),
+  scores: jsonb("scores").notNull(),
+  userId: varchar("user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   lastSearchedAt: timestamp("last_searched_at").defaultNow(),
+});
+
+export const userSearches = pgTable("user_searches", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  assessmentId: integer("assessment_id").notNull().references(() => assessments.id),
+  searchedAt: timestamp("searched_at").defaultNow(),
 });
 
 export const insertAssessmentSchema = createInsertSchema(assessments).extend({

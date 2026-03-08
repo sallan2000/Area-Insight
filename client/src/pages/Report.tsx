@@ -42,6 +42,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { UserMenu } from "@/components/UserMenu";
 import { 
   BarChart, 
   Bar, 
@@ -408,10 +409,13 @@ export default function Report() {
               </h1>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
-            <Share2 className="w-4 h-4" />
-            Share & Export
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
+              <Share2 className="w-4 h-4" />
+              Share & Export
+            </Button>
+            <UserMenu />
+          </div>
         </div>
       </header>
 

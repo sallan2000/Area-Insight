@@ -84,8 +84,8 @@ export function LockedMap({ lat, lng, postcode }: LockedMapProps) {
   return (
     <div
       ref={mapContainer}
-      className="w-full"
-      style={{ height: '400px' }}
+      className="w-full relative"
+      style={{ height: '400px', zIndex: 0 }}
     />
   );
 }

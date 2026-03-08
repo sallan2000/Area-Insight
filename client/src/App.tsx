@@ -8,6 +8,7 @@ import Home from "@/pages/Home";
 import Report from "@/pages/Report";
 import Compare from "@/pages/Compare";
 import HowItWorks from "@/pages/HowItWorks";
+import HistoryPage from "@/pages/History";
 
 function Router() {
   return (
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/report/:id" component={Report} />
       <Route path="/compare" component={Compare} />
       <Route path="/how-it-works" component={HowItWorks} />
+      <Route path="/history" component={HistoryPage} />
       <Route component={NotFound} />
     </Switch>
   );

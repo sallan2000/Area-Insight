@@ -628,6 +628,8 @@ export async function registerRoutes(
       const cleanPostcode = postcode.trim().toUpperCase();
       const cached = await storage.getAssessmentByPostcode(cleanPostcode);
       
+      const userId = (req.user as any)?.claims?.sub || null;
+      
       if (cached) {
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
         const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
@@ -635,9 +637,11 @@ export async function registerRoutes(
 
         if (isFresh) {
           await storage.updateLastSearchedAt(cached.id);
+          if (userId) {
+            await storage.recordUserSearch(userId, cached.id);
+          }
           return res.status(200).json(cached);
         }
-        // If not fresh, we fall through to fetch new data and update
       }
 
       const data = await fetchAreaMetrics(cleanPostcode);
@@ -649,6 +653,9 @@ export async function registerRoutes(
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
         scores: scores
       });
+      if (userId) {
+        await storage.recordUserSearch(userId, assessment.id);
+      }
       res.status(201).json(assessment);
 
       // Trigger pre-fetching for nearest postcodes in the background with concurrency limit
@@ -693,6 +700,19 @@ export async function registerRoutes(
     const assessment = await storage.getAssessment(Number(req.params.id));
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     res.json(assessment);
+  });
+
+  app.get("/api/my-assessments", async (req, res) => {
+    const userId = (req.user as any)?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    try {
+      const results = await storage.getAssessmentsByUser(userId);
+      res.json(results);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch assessments" });
+    }
   });
 
   app.post("/api/share", async (req, res) => {

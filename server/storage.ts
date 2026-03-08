@@ -2,17 +2,20 @@ import { db } from "./db";
 import {
   assessments,
   shareRequests,
+  userSearches,
   type InsertAssessment,
   type Assessment,
   type InsertShareRequest,
   type ShareRequest
 } from "@shared/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
   createAssessment(assessment: InsertAssessment): Promise<Assessment>;
   getAssessment(id: number): Promise<Assessment | undefined>;
   getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined>;
+  recordUserSearch(userId: string, assessmentId: number): Promise<void>;
+  getAssessmentsByUser(userId: string): Promise<Assessment[]>;
   updateLastSearchedAt(id: number): Promise<void>;
   createShareRequest(request: InsertShareRequest): Promise<ShareRequest>;
 }
@@ -56,6 +59,22 @@ export class DatabaseStorage implements IStorage {
       .where(eq(assessments.postcode, postcode))
       .limit(1);
     return assessment;
+  }
+
+  async recordUserSearch(userId: string, assessmentId: number): Promise<void> {
+    await db.insert(userSearches)
+      .values({ userId, assessmentId })
+      .onConflictDoNothing();
+  }
+
+  async getAssessmentsByUser(userId: string): Promise<Assessment[]> {
+    const rows = await db
+      .select({ assessment: assessments, searchedAt: userSearches.searchedAt })
+      .from(userSearches)
+      .innerJoin(assessments, eq(userSearches.assessmentId, assessments.id))
+      .where(eq(userSearches.userId, userId))
+      .orderBy(desc(userSearches.searchedAt));
+    return rows.map(r => r.assessment);
   }
 
   async updateLastSearchedAt(id: number): Promise<void> {

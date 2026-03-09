@@ -464,7 +464,7 @@ export default function Report() {
 
               {/* Council Tax Section */}
               {raw.councilTax && (
-                <Card className="bg-white border-none shadow-sm overflow-hidden">
+                <Card className="bg-white border-none shadow-sm overflow-hidden" data-testid="card-council-tax">
                   <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="flex items-center gap-4">
                       <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
@@ -473,8 +473,11 @@ export default function Report() {
                       <div>
                         <h3 className="text-lg font-bold">Local Council Tax</h3>
                         <p className="text-sm text-muted-foreground">
-                          Estimated band for properties in <span className="font-semibold">{report.postcode}</span>: 
-                          <span className="ml-1 text-foreground font-bold">Band {raw.councilTax.estimatedBand}</span>
+                          {raw.councilTax.source === "VOA (2024)" ? "Most common band" : "Estimated band"} for properties in <span className="font-semibold">{report.postcode}</span>: 
+                          <span className="ml-1 text-foreground font-bold" data-testid="text-council-tax-band">Band {raw.councilTax.estimatedBand}</span>
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-council-tax-source">
+                          Source: {raw.councilTax.source || "Estimated"}
                         </p>
                       </div>
                     </div>
@@ -484,7 +487,7 @@ export default function Report() {
                       rel="noopener noreferrer"
                       className="w-full md:w-auto"
                     >
-                      <Button variant="outline" className="w-full gap-2">
+                      <Button variant="outline" className="w-full gap-2" data-testid="button-council-tax-lookup">
                         Official Lookup
                         <ArrowRight className="w-4 h-4" />
                       </Button>

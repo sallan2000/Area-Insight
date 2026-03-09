@@ -3,6 +3,21 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
 import { z } from "zod";
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+let lsoaBandLookup: Record<string, string> = {};
+try {
+  const data = readFileSync(join(__dirname, 'data', 'lsoa-council-tax-bands.json'), 'utf-8');
+  lsoaBandLookup = JSON.parse(data);
+  console.log(`Loaded ${Object.keys(lsoaBandLookup).length} LSOA council tax band entries`);
+} catch (e) {
+  console.error("Failed to load LSOA council tax band data:", e);
+}
 
 // Helper function to calculate distance between two points in km using Haversine formula
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -103,7 +118,9 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
   const diversityIndex = categories.size;
   const amenitiesCount = amenitiesList.length; 
 
-  // Estimate Council Tax Band (Fallback heuristic for demo purposes)
+  const lsoaCode = geoData.result.codes?.lsoa || geoData.result.codes?.lsoa21 || null;
+  const voaBand = lsoaCode ? lsoaBandLookup[lsoaCode] || null : null;
+
   const getEstimatedBand = (outcode: string) => {
     const highValuePrefixes = ['SW', 'W', 'NW', 'EC', 'WC', 'SE1', 'E1W'];
     if (highValuePrefixes.some(pref => outcode.startsWith(pref))) return 'G';
@@ -113,7 +130,8 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     return 'C';
   };
 
-  const councilTaxBand = getEstimatedBand(geoData.result.outcode);
+  const councilTaxBand = voaBand || getEstimatedBand(geoData.result.outcode);
+  const councilTaxSource = voaBand ? "VOA (2024)" : "Estimated";
   const councilTaxLink = geoData.result.country === 'Scotland' 
     ? "https://www.saa.gov.uk/" 
     : "https://www.tax.service.gov.uk/check-council-tax-band/search";
@@ -495,7 +513,8 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     },
     councilTax: {
       estimatedBand: councilTaxBand,
-      lookupUrl: councilTaxLink
+      lookupUrl: councilTaxLink,
+      source: councilTaxSource
     },
     connectivity: {
       broadband: broadband,

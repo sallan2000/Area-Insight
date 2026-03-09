@@ -65,11 +65,14 @@ The `shared/` directory contains code used by both frontend and backend:
 ## External Dependencies
 
 ### APIs
-- **postcodes.io**: UK postcode geocoding (latitude, longitude, outcode)
+- **postcodes.io**: UK postcode geocoding (latitude, longitude, outcode, LSOA codes)
 - **UK Police API**: Real-time crime statistics for locations
 - **OpenStreetMap Overpass API**: Amenities, schools, bus stops, train stations, major roads/railways/airports (for noise estimation)
 - **DEFRA UK-AIR API**: Air quality monitoring stations and pollutant readings (with location-based heuristic fallback)
 - **Environment Agency Flood Monitoring API**: Flood alerts (5km radius), river/sea monitoring stations (3km), latest water levels
+
+### Static Data Files
+- **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates based on the most common band in each Lower Super Output Area. Falls back to outcode-based heuristic for Scottish postcodes or unmatched LSOAs.
 
 ### Environmental Quality Data
 - **Air Quality**: Proper UK DAQI (1-10 scale) using DEFRA bands for PM2.5, PM10, NO₂, O₃. Primary source: DEFRA UK-AIR nearest station. Fallback: location-based heuristic estimating pollutant levels from urban classification and proximity to major roads

@@ -541,23 +541,58 @@ async function fetchAreaMetrics(postcode: string) {
     crimesData.push(...simulatedCrimes);
   }
 
-  const crimeCount = crimesData.length;
-  const recent6Months = allMonthsCrimes.slice(0, 6).reduce((acc, m) => acc + m.length, 0);
-  const older6Months = allMonthsCrimes.slice(6, 12).reduce((acc, m) => acc + m.length, 0);
+  const isScotland = geoData.result.country === 'Scotland';
+
+  const POSTCODE_AREA_KM2 = 0.25;
+  let effectiveCoverageArea = POSTCODE_AREA_KM2;
+  let areaNormalisationFactor = 1.0;
+
+  if (!isScotland && crimesData.length > 5) {
+    const lats: number[] = [];
+    const lngs: number[] = [];
+    for (const c of crimesData) {
+      const cLat = c.location?.latitude ? parseFloat(c.location.latitude) : null;
+      const cLng = c.location?.longitude ? parseFloat(c.location.longitude) : null;
+      if (cLat !== null && cLng !== null) {
+        lats.push(cLat);
+        lngs.push(cLng);
+      }
+    }
+    if (lats.length > 5) {
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      const latSpanKm = (maxLat - minLat) * 111.32;
+      const lngSpanKm = (maxLng - minLng) * 111.32 * Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+      const boundingBoxArea = latSpanKm * lngSpanKm;
+      effectiveCoverageArea = Math.max(boundingBoxArea * 0.7, POSTCODE_AREA_KM2);
+      areaNormalisationFactor = Math.min(1.0, POSTCODE_AREA_KM2 / effectiveCoverageArea);
+    }
+  }
+
+  const rawCrimeCount = crimesData.length;
+  const crimeCount = Math.round(rawCrimeCount * areaNormalisationFactor);
+  const recent6Months = Math.round(allMonthsCrimes.slice(0, 6).reduce((acc, m) => acc + m.length, 0) * areaNormalisationFactor);
+  const older6Months = Math.round(allMonthsCrimes.slice(6, 12).reduce((acc, m) => acc + m.length, 0) * areaNormalisationFactor);
   const crimeTrend = recent6Months < older6Months ? "down" : (recent6Months > older6Months ? "up" : "stable");
 
-  const violentCrimes = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery' || c.category === 'possession-of-weapons' || c.category === 'violence-and-sexual-offences').length;
-  const burglaryCrimes = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person' || c.category === 'shoplifting').length;
-  const asbCrimes = crimesData.filter((c: any) => c.category === 'anti-social-behaviour' || c.category === 'public-order').length;
-  const vehicleCrimes = crimesData.filter((c: any) => c.category === 'vehicle-crime').length;
-  const drugCrimes = crimesData.filter((c: any) => c.category === 'drugs').length;
-  
-  // Adjust severity points based on region to mitigate reporting differences
-  // Scotland often has different reporting thresholds or categories, and rural areas have extremely low baselines.
-  const isScotland = geoData.result.country === 'Scotland';
-  const regionalMultiplier = isScotland ? 1.5 : 1.0; 
-  
+  const rawViolent = crimesData.filter((c: any) => c.category === 'violent-crime' || c.category === 'robbery' || c.category === 'possession-of-weapons' || c.category === 'violence-and-sexual-offences').length;
+  const rawBurglary = crimesData.filter((c: any) => c.category === 'burglary' || c.category === 'theft-from-the-person' || c.category === 'shoplifting').length;
+  const rawAsb = crimesData.filter((c: any) => c.category === 'anti-social-behaviour' || c.category === 'public-order').length;
+  const rawVehicle = crimesData.filter((c: any) => c.category === 'vehicle-crime').length;
+  const rawDrug = crimesData.filter((c: any) => c.category === 'drugs').length;
+
+  const violentCrimes = Math.round(rawViolent * areaNormalisationFactor);
+  const burglaryCrimes = Math.round(rawBurglary * areaNormalisationFactor);
+  const asbCrimes = Math.round(rawAsb * areaNormalisationFactor);
+  const vehicleCrimes = Math.round(rawVehicle * areaNormalisationFactor);
+  const drugCrimes = Math.round(rawDrug * areaNormalisationFactor);
+
+  const regionalMultiplier = isScotland ? 1.3 : 1.0;
   const severityScore = ((violentCrimes * 5) + (burglaryCrimes * 3) + (asbCrimes * 1) + (vehicleCrimes * 2) + (drugCrimes * 2)) * regionalMultiplier;
+
+  console.log(`Safety normalisation: ${geoData.result.postcode} | raw=${rawCrimeCount} normalised=${crimeCount} | area=${effectiveCoverageArea.toFixed(2)}km² factor=${areaNormalisationFactor.toFixed(4)} | severity=${severityScore.toFixed(0)}`);
 
   // 4. Fetch Nearest Postcodes
   const fetchNearest = async () => {
@@ -593,10 +628,12 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const transportScoreFinalRaw = (metrics.transport.stations.length === 0 && metrics.transport.busStopCount === 0) ? 0 : (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
-  const severityPoints = normalize(metrics.safetySeverity, 0, isScotland ? 150 : 800);
-  const regionalDensityMultiplier = isScotland ? 1.0 : 0.3; // Significantly lowering weight for E&W/NI
-  const crimeDensity = (metrics.crimeCount / 3.14) * regionalDensityMultiplier; 
-  const crimeDensityPoints = normalize(crimeDensity, 0, isScotland ? 300 : 1000);
+  const severityCeiling = isScotland ? 150 : 200;
+  const severityPoints = normalize(metrics.safetySeverity, 0, severityCeiling);
+  const densityMultiplier = isScotland ? 1.0 : 0.8;
+  const crimeDensity = (metrics.crimeCount / 3.14) * densityMultiplier;
+  const densityCeiling = isScotland ? 300 : 400;
+  const crimeDensityPoints = normalize(crimeDensity, 0, densityCeiling);
   const safetyBase = 100 - (crimeDensityPoints * 0.4) - (severityPoints * 0.6);
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));

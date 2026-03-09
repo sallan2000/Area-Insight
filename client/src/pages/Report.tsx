@@ -670,9 +670,9 @@ export default function Report() {
           {/* Environment Section */}
           {raw.environment && (
             <section className="space-y-6">
-              <h3 className="text-xl font-display font-bold px-1">Environmental Quality</h3>
+              <h3 className="text-xl font-display font-bold px-1" data-testid="heading-environmental">Environmental Quality</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-white border-border shadow-sm">
+                <Card className="bg-white border-border shadow-sm" data-testid="card-air-quality">
                   <CardContent className="p-6">
                     <div className="flex items-center gap-4 mb-4">
                       <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
@@ -680,19 +680,40 @@ export default function Report() {
                       </div>
                       <div>
                         <h4 className="font-bold">Air Quality</h4>
-                        <p className="text-sm text-muted-foreground">Local pollutant status</p>
+                        <p className="text-sm text-muted-foreground">UK DAQI (1–10 scale)</p>
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-2xl font-bold text-blue-700">{raw.environment.airQuality.level}</p>
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-white font-bold text-lg ${
+                          raw.environment.airQuality.index <= 3 ? 'bg-green-500' :
+                          raw.environment.airQuality.index <= 6 ? 'bg-yellow-500' :
+                          raw.environment.airQuality.index <= 9 ? 'bg-orange-500' : 'bg-red-600'
+                        }`} data-testid="text-air-quality-index">
+                          {raw.environment.airQuality.index}
+                        </span>
+                        <span className={`text-lg font-bold ${
+                          raw.environment.airQuality.index <= 3 ? 'text-green-700' :
+                          raw.environment.airQuality.index <= 6 ? 'text-yellow-700' :
+                          raw.environment.airQuality.index <= 9 ? 'text-orange-700' : 'text-red-700'
+                        }`} data-testid="text-air-quality-level">
+                          {raw.environment.airQuality.level}
+                        </span>
+                      </div>
                       <p className="text-sm text-muted-foreground leading-snug">{raw.environment.airQuality.description}</p>
-                      
+
+                      {raw.environment.airQuality.source && (
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Source: {raw.environment.airQuality.source}
+                        </p>
+                      )}
+
                       {raw.environment.airQuality.pollutants?.length > 0 && (
-                        <div className="pt-4 grid grid-cols-2 gap-2">
-                          {raw.environment.airQuality.pollutants.slice(0, 4).map((p: any, i: number) => (
-                            <div key={i} className="bg-gray-50 p-2 rounded-lg border border-border">
-                              <p className="text-[10px] text-muted-foreground font-bold">{p.name}</p>
-                              <p className="text-xs font-bold text-foreground">{p.value.toFixed(1)} {p.unit}</p>
+                        <div className="pt-3 grid grid-cols-3 gap-1.5">
+                          {raw.environment.airQuality.pollutants.slice(0, 6).map((p: any, i: number) => (
+                            <div key={i} className="bg-gray-50 p-1.5 rounded-lg border border-border text-center" data-testid={`text-pollutant-${i}`}>
+                              <p className="text-[9px] text-muted-foreground font-bold">{p.name}</p>
+                              <p className="text-[11px] font-bold text-foreground">{typeof p.value === 'number' ? p.value.toFixed(1) : p.value}</p>
                             </div>
                           ))}
                         </div>
@@ -701,57 +722,120 @@ export default function Report() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-border shadow-sm">
+                <Card className="bg-white border-border shadow-sm" data-testid="card-noise">
                   <CardContent className="p-6">
                     <div className="flex items-center gap-4 mb-4">
-                      <div className="p-3 bg-orange-50 rounded-xl text-orange-600">
+                      <div className={`p-3 rounded-xl ${
+                        raw.environment.noise.level === 'Quiet' ? 'bg-green-50 text-green-600' :
+                        raw.environment.noise.level === 'Moderate' ? 'bg-orange-50 text-orange-600' :
+                        'bg-red-50 text-red-600'
+                      }`}>
                         <Volume2 className="w-6 h-6" />
                       </div>
                       <div>
                         <h4 className="font-bold">Noise Exposure</h4>
-                        <p className="text-sm text-muted-foreground">Ambient sound levels</p>
+                        <p className="text-sm text-muted-foreground">Estimated ambient levels</p>
                       </div>
                     </div>
-                    <div className="space-y-4">
-                      <div className="p-4 bg-orange-50/50 rounded-xl text-center border border-orange-100">
-                        <p className="text-2xl font-bold text-orange-700">{raw.environment.noise.level}</p>
+                    <div className="space-y-3">
+                      <div className={`p-3 rounded-xl text-center border ${
+                        raw.environment.noise.level === 'Quiet' ? 'bg-green-50/50 border-green-100' :
+                        raw.environment.noise.level === 'Moderate' ? 'bg-orange-50/50 border-orange-100' :
+                        raw.environment.noise.level === 'Loud' ? 'bg-red-50/50 border-red-100' :
+                        'bg-red-100/50 border-red-200'
+                      }`}>
+                        <p className={`text-2xl font-bold ${
+                          raw.environment.noise.level === 'Quiet' ? 'text-green-700' :
+                          raw.environment.noise.level === 'Moderate' ? 'text-orange-700' : 'text-red-700'
+                        }`} data-testid="text-noise-level">
+                          {raw.environment.noise.level}
+                        </p>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="text-center">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold">Daytime</p>
-                          <p className="text-sm font-bold">{raw.environment.noise.day}dB</p>
+                          <p className="text-sm font-bold" data-testid="text-noise-day">{raw.environment.noise.day} dB</p>
                         </div>
                         <div className="text-center">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold">Nighttime</p>
-                          <p className="text-sm font-bold">{raw.environment.noise.night}dB</p>
+                          <p className="text-sm font-bold" data-testid="text-noise-night">{raw.environment.noise.night} dB</p>
                         </div>
                       </div>
+                      {raw.environment.noise.sources?.length > 0 && (
+                        <div className="pt-2 border-t border-border space-y-1">
+                          <p className="text-[10px] text-muted-foreground uppercase font-bold">Contributing sources</p>
+                          {raw.environment.noise.sources.map((s: string, i: number) => (
+                            <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5" data-testid={`text-noise-source-${i}`}>
+                              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                              {s}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-border shadow-sm">
+                <Card className="bg-white border-border shadow-sm" data-testid="card-flood-risk">
                   <CardContent className="p-6">
                     <div className="flex items-center gap-4 mb-4">
-                      <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                      <div className={`p-3 rounded-xl ${
+                        raw.environment.floodRisk.likelihood === 'Very Low' ? 'bg-emerald-50 text-emerald-600' :
+                        raw.environment.floodRisk.likelihood === 'Low' ? 'bg-green-50 text-green-600' :
+                        raw.environment.floodRisk.likelihood === 'Medium' ? 'bg-yellow-50 text-yellow-600' :
+                        'bg-red-50 text-red-600'
+                      }`}>
                         <Waves className="w-6 h-6" />
                       </div>
                       <div>
                         <h4 className="font-bold">Flood Risk</h4>
-                        <p className="text-sm text-muted-foreground">EA likelihood assessment</p>
+                        <p className="text-sm text-muted-foreground">Environment Agency data</p>
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-2xl font-bold text-emerald-700">{raw.environment.floodRisk.likelihood}</p>
+                      <p className={`text-2xl font-bold ${
+                        raw.environment.floodRisk.likelihood === 'Very Low' ? 'text-emerald-700' :
+                        raw.environment.floodRisk.likelihood === 'Low' ? 'text-green-700' :
+                        raw.environment.floodRisk.likelihood === 'Medium' ? 'text-yellow-700' : 'text-red-700'
+                      }`} data-testid="text-flood-likelihood">
+                        {raw.environment.floodRisk.likelihood}
+                      </p>
                       <p className="text-sm text-muted-foreground leading-snug">{raw.environment.floodRisk.description}</p>
-                      <div className="mt-4 pt-4 border-t border-border">
-                        <div className="flex justify-between items-center text-xs font-medium">
-                          <span className="text-muted-foreground">Suitability</span>
-                          <span className="text-emerald-700 font-bold px-2 py-0.5 bg-emerald-50 rounded-md">
-                            {raw.environment.floodRisk.suitability}
-                          </span>
+
+                      {raw.environment.floodRisk.station && (
+                        <div className="mt-3 pt-3 border-t border-border space-y-1.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-muted-foreground">Nearest station</span>
+                            <span className="font-medium text-foreground" data-testid="text-flood-station">{raw.environment.floodRisk.station.name}</span>
+                          </div>
+                          {raw.environment.floodRisk.station.river && (
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-muted-foreground">River</span>
+                              <span className="font-medium text-foreground" data-testid="text-flood-river">{raw.environment.floodRisk.station.river}</span>
+                            </div>
+                          )}
+                          {raw.environment.floodRisk.station.distance != null && (
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-muted-foreground">Distance</span>
+                              <span className="font-medium text-foreground">{(raw.environment.floodRisk.station.distance * 1000).toFixed(0)}m</span>
+                            </div>
+                          )}
+                          {raw.environment.floodRisk.station.latestReading && (
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-muted-foreground">Latest reading</span>
+                              <span className="font-medium text-foreground" data-testid="text-flood-level">{raw.environment.floodRisk.station.latestReading.value} m</span>
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      )}
+
+                      {raw.environment.floodRisk.activeAlerts > 0 && (
+                        <div className="mt-2 px-2 py-1.5 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-xs font-bold text-yellow-800" data-testid="text-flood-alerts">
+                            ⚠ {raw.environment.floodRisk.activeAlerts} active alert{raw.environment.floodRisk.activeAlerts > 1 ? 's' : ''} within 5km
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

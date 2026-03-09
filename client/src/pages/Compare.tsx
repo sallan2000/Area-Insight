@@ -350,9 +350,9 @@ export default function Compare() {
                       { name: 'Broadband', key: 'broadband', icon: Wifi, type: 'text', getValue: getConnectivityValue },
                       { name: '4G Signal', key: 'mobile4g', icon: Signal, type: 'text', getValue: (r: any) => r?.connectivity?.mobile?.fourG ? `${r.connectivity.mobile.fourG} (4G)` : 'N/A' },
                       { name: '5G Signal', key: 'mobile5g', icon: Signal, type: 'text', getValue: (r: any) => r?.connectivity?.mobile?.fiveG ? `${r.connectivity.mobile.fiveG} (5G)` : 'N/A' },
-                      { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality?.level || 'N/A' },
-                      { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise?.level || 'N/A' },
-                      { name: 'Flood Risk', key: 'flood', icon: Waves, type: 'text', getValue: (r: any) => r?.environment?.floodRisk?.likelihood || 'N/A' },
+                      { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A' },
+                      { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A' },
+                      { name: 'Flood Risk', key: 'flood', icon: Waves, type: 'text', getValue: (r: any) => r?.environment?.floodRisk ? `${r.environment.floodRisk.likelihood}${r.environment.floodRisk.station?.river ? ` — ${r.environment.floodRisk.station.river}` : ''}` : 'N/A' },
                     ].map((cat) => {
                       const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);
                       const val2 = cat.type === 'score' ? report2Scores[cat.key] : cat.getValue?.(raw2);

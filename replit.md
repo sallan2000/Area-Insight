@@ -67,7 +67,14 @@ The `shared/` directory contains code used by both frontend and backend:
 ### APIs
 - **postcodes.io**: UK postcode geocoding (latitude, longitude, outcode)
 - **UK Police API**: Real-time crime statistics for locations
-- **OpenStreetMap Overpass API**: Amenities, schools, bus stops, train stations
+- **OpenStreetMap Overpass API**: Amenities, schools, bus stops, train stations, major roads/railways/airports (for noise estimation)
+- **DEFRA UK-AIR API**: Air quality monitoring stations and pollutant readings (with location-based heuristic fallback)
+- **Environment Agency Flood Monitoring API**: Flood alerts (5km radius), river/sea monitoring stations (3km), latest water levels
+
+### Environmental Quality Data
+- **Air Quality**: Proper UK DAQI (1-10 scale) using DEFRA bands for PM2.5, PM10, NO₂, O₃. Primary source: DEFRA UK-AIR nearest station. Fallback: location-based heuristic estimating pollutant levels from urban classification and proximity to major roads
+- **Noise Estimation**: OSM proximity analysis — base 45 dB (quiet residential) with increments for motorways (+20 dB within 100m), A-roads (+14 dB), railways (+10 dB), airports (+12 dB), nightlife density (+5 dB). Night = day - 12 dB. Classifications: Quiet (<50), Moderate (50-60), Loud (60-70), Very Loud (>70)
+- **Flood Risk**: Combines EA active flood alerts + nearest monitoring station proximity + river name/level. Levels: Very Low / Low / Medium / High. Includes station name, river, distance, and latest water level reading
 
 ### Database
 - **PostgreSQL**: Primary data store via DATABASE_URL environment variable

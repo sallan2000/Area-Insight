@@ -119,54 +119,267 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     : "https://www.tax.service.gov.uk/check-council-tax-band/search";
 
   // 5. Environmental Data (DEFRA & EA)
+  const daqiLevel = (idx: number) => idx <= 3 ? "Low" : idx <= 6 ? "Moderate" : idx <= 9 ? "High" : "Very High";
+  const daqiDesc = (idx: number) => idx <= 3
+    ? "Air pollution is low. Enjoy your usual outdoor activities."
+    : idx <= 6
+    ? "Air pollution is moderate. Consider reducing strenuous outdoor activity if you experience symptoms."
+    : idx <= 9
+    ? "Air pollution is high. Reduce strenuous physical exertion, particularly outdoors."
+    : "Air pollution is very high. Avoid strenuous activities outdoors.";
+  const daqiBands = (pm25: number, pm10: number, no2: number, o3: number) => {
+    const pm25Index = pm25 <= 11 ? 1 : pm25 <= 23 ? 2 : pm25 <= 35 ? 3 : pm25 <= 41 ? 4 : pm25 <= 47 ? 5 : pm25 <= 53 ? 6 : pm25 <= 58 ? 7 : pm25 <= 64 ? 8 : pm25 <= 70 ? 9 : 10;
+    const pm10Index = pm10 <= 16 ? 1 : pm10 <= 33 ? 2 : pm10 <= 50 ? 3 : pm10 <= 58 ? 4 : pm10 <= 66 ? 5 : pm10 <= 75 ? 6 : pm10 <= 83 ? 7 : pm10 <= 91 ? 8 : pm10 <= 100 ? 9 : 10;
+    const no2Index = no2 <= 67 ? 1 : no2 <= 134 ? 2 : no2 <= 200 ? 3 : no2 <= 267 ? 4 : no2 <= 334 ? 5 : no2 <= 400 ? 6 : no2 <= 467 ? 7 : no2 <= 534 ? 8 : no2 <= 600 ? 9 : 10;
+    const o3Index = o3 <= 33 ? 1 : o3 <= 66 ? 2 : o3 <= 100 ? 3 : o3 <= 120 ? 4 : o3 <= 140 ? 5 : o3 <= 160 ? 6 : o3 <= 187 ? 7 : o3 <= 213 ? 8 : o3 <= 240 ? 9 : 10;
+    return Math.max(pm25Index, pm10Index, no2Index, o3Index);
+  };
+
   const getAirQuality = async () => {
     try {
-      const res = await fetch(`https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lng}&appid=da064619794e79124239f3792015509a`);
+      const res = await fetch(`https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations?near=${lat},${lng}&limit=1`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(8000)
+      });
       if (res.ok) {
-        const data = await res.json();
-        const aqi = data.list[0].main.aqi; // 1-5 scale
-        const levels = ["Excellent", "Good", "Fair", "Poor", "Very Poor"];
-        const descriptions = [
-          "Air quality is considered satisfactory, and air pollution poses little or no risk.",
-          "Air quality is acceptable; however, for some pollutants there may be a moderate health concern for a very small number of people who are unusually sensitive to air pollution.",
-          "Members of sensitive groups may experience health effects. The general public is not likely to be affected.",
-          "Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects.",
-          "Health warnings of emergency conditions. The entire population is more likely to be affected."
-        ];
-        return {
-          index: aqi * 2, // Scale to 1-10 for UK DAQI style
-          level: levels[aqi - 1],
-          description: descriptions[aqi - 1],
-          pollutants: Object.entries(data.list[0].components).map(([name, value]) => ({
-            name: name.toUpperCase(),
-            value: value as number,
-            unit: "μg/m³"
-          }))
-        };
+        const stations = await res.json();
+        if (stations && stations.length > 0) {
+          const station = stations[0];
+          const stationDist = station.geometry?.coordinates
+            ? getDistance(lat, lng, station.geometry.coordinates[1], station.geometry.coordinates[0])
+            : null;
+
+          const tsRes = await fetch(`https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations/${station.properties?.id || station.id}/timeseries`, {
+            headers: { 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(8000)
+          });
+
+          if (tsRes.ok) {
+            const timeseries = await tsRes.json();
+            const pollutantMap: Record<string, number> = {};
+
+            for (const ts of timeseries.slice(0, 10)) {
+              if (ts.lastValue?.value != null) {
+                const label = (ts.parameters?.phenomenon?.label || ts.label || "").toLowerCase();
+                if (label.includes("pm2.5") || label.includes("pm25")) pollutantMap["PM2.5"] = ts.lastValue.value;
+                else if (label.includes("pm10")) pollutantMap["PM10"] = ts.lastValue.value;
+                else if (label.includes("no2") || label.includes("nitrogen dioxide")) pollutantMap["NO₂"] = ts.lastValue.value;
+                else if (label.includes("o3") || label.includes("ozone")) pollutantMap["O₃"] = ts.lastValue.value;
+                else if (label.includes("so2") || label.includes("sulphur")) pollutantMap["SO₂"] = ts.lastValue.value;
+              }
+            }
+
+            const pm25 = pollutantMap["PM2.5"] || 0;
+            const pm10 = pollutantMap["PM10"] || 0;
+            const no2 = pollutantMap["NO₂"] || 0;
+            const o3 = pollutantMap["O₃"] || 0;
+
+            if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
+              const daqi = daqiBands(pm25, pm10, no2, o3);
+              const pollutants = Object.entries(pollutantMap).map(([name, value]) => ({
+                name, value: Math.round(value * 10) / 10, unit: "μg/m³"
+              }));
+
+              return {
+                index: daqi,
+                level: daqiLevel(daqi),
+                description: daqiDesc(daqi),
+                pollutants,
+                station: {
+                  name: station.properties?.label || station.label || "Unknown",
+                  distance: stationDist
+                },
+                source: "DEFRA UK-AIR"
+              };
+            }
+          }
+        }
       }
     } catch (e) {
-      console.error("Air quality fetch failed:", e);
+      console.error("DEFRA UK-AIR fetch failed:", e);
     }
-    return { index: 3, level: "Good", description: "Air quality is generally good in this area.", pollutants: [] };
+
+    const estimateAirQuality = () => {
+      let basePm25 = 8;
+      let baseNo2 = 20;
+
+      const isLondon = geoData.result.admin_district?.toLowerCase().includes('london') ||
+        ['EC', 'WC', 'SW', 'SE', 'NW', 'NE', 'W1', 'E1', 'N1'].some(p => geoData.result.outcode?.startsWith(p));
+      const isMajorCity = ['manchester', 'birmingham', 'leeds', 'glasgow', 'edinburgh', 'liverpool', 'bristol', 'sheffield', 'newcastle', 'nottingham', 'cardiff', 'belfast']
+        .some(c => (geoData.result.admin_district || '').toLowerCase().includes(c));
+
+      if (isLondon) { basePm25 += 6; baseNo2 += 25; }
+      else if (isMajorCity) { basePm25 += 3; baseNo2 += 12; }
+
+      const nearMajorRoad = elementsWithDistance.some((e: any) =>
+        e.tags?.highway && ["motorway", "trunk", "primary"].includes(e.tags.highway) && e.distance < 0.2
+      );
+      if (nearMajorRoad) { basePm25 += 4; baseNo2 += 15; }
+
+      const nearSecondary = elementsWithDistance.some((e: any) =>
+        e.tags?.highway && ["secondary", "tertiary"].includes(e.tags.highway) && e.distance < 0.1
+      );
+      if (nearSecondary) { basePm25 += 2; baseNo2 += 5; }
+
+      const pm25 = Math.round(basePm25 * 10) / 10;
+      const no2 = Math.round(baseNo2 * 10) / 10;
+      const pm10 = Math.round(pm25 * 1.5 * 10) / 10;
+      const o3 = Math.round(Math.max(10, 50 - no2 * 0.3) * 10) / 10;
+
+      const daqi = daqiBands(pm25, pm10, no2, o3);
+      return {
+        index: daqi,
+        level: daqiLevel(daqi),
+        description: daqiDesc(daqi),
+        pollutants: [
+          { name: "PM2.5", value: pm25, unit: "μg/m³" },
+          { name: "PM10", value: pm10, unit: "μg/m³" },
+          { name: "NO₂", value: no2, unit: "μg/m³" },
+          { name: "O₃", value: o3, unit: "μg/m³" }
+        ],
+        source: "Estimated from location"
+      };
+    };
+
+    return estimateAirQuality();
   };
 
   const getFloodRisk = async () => {
     try {
-      const res = await fetch(`https://environment.data.gov.uk/flood-monitoring/id/floods?lat=${lat}&long=${lng}&dist=1`);
-      if (res.ok) {
-        const data = await res.json();
-        const items = data.items || [];
-        const hasAlerts = items.length > 0;
-        return {
-          likelihood: hasAlerts ? "Medium" : "Very Low",
-          suitability: hasAlerts ? "Check local guidance" : "High",
-          description: hasAlerts ? "There are active flood alerts or historical risks in this 1km area." : "This area is at very low risk of flooding from rivers or the sea."
-        };
+      const [alertsRes, stationsRes] = await Promise.all([
+        fetch(`https://environment.data.gov.uk/flood-monitoring/id/floods?lat=${lat}&long=${lng}&dist=5`),
+        fetch(`https://environment.data.gov.uk/flood-monitoring/id/stations?lat=${lat}&long=${lng}&dist=3&_limit=5`)
+      ]);
+
+      let alertCount = 0;
+      let alertSeverity = "None";
+      if (alertsRes.ok) {
+        const alertData = await alertsRes.json();
+        const items = alertData.items || [];
+        alertCount = items.length;
+        if (items.some((i: any) => i.severityLevel <= 2)) alertSeverity = "Warning";
+        else if (items.length > 0) alertSeverity = "Alert";
       }
+
+      let nearestStation: any = null;
+      let stationReading: any = null;
+      if (stationsRes.ok) {
+        const stationData = await stationsRes.json();
+        const stations = (stationData.items || []).map((s: any) => ({
+          ...s,
+          _dist: (s.lat && s.long) ? getDistance(lat, lng, s.lat, s.long) : 999
+        })).sort((a: any, b: any) => a._dist - b._dist);
+        const riverStations = stations.filter((s: any) => s.riverName);
+        if (riverStations.length > 0) {
+          nearestStation = riverStations[0];
+        } else if (stations.length > 0) {
+          nearestStation = stations[0];
+        }
+        if (nearestStation) {
+          try {
+            const readingRes = await fetch(`${nearestStation["@id"]}/readings?_sorted&_limit=1`);
+            if (readingRes.ok) {
+              const readingData = await readingRes.json();
+              if (readingData.items && readingData.items.length > 0) {
+                stationReading = {
+                  value: readingData.items[0].value,
+                  dateTime: readingData.items[0].dateTime
+                };
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      const stationDist = nearestStation ? nearestStation._dist : null;
+
+      let likelihood: string;
+      let description: string;
+      if (alertSeverity === "Warning") {
+        likelihood = "High";
+        description = `Active flood warnings within 5km. ${alertCount} alert(s) in the area.`;
+      } else if (alertSeverity === "Alert") {
+        likelihood = "Medium";
+        description = `${alertCount} flood alert(s) within 5km. Monitor local conditions.`;
+      } else if (nearestStation && stationDist !== null && stationDist < 0.5) {
+        likelihood = "Low";
+        description = `Close to ${nearestStation.riverName || "a watercourse"} (${(stationDist * 1000).toFixed(0)}m). No current alerts.`;
+      } else if (nearestStation && stationDist !== null && stationDist < 1.5) {
+        likelihood = "Very Low";
+        description = `${nearestStation.riverName || "Watercourse"} is ${stationDist.toFixed(1)}km away. No current alerts.`;
+      } else {
+        likelihood = "Very Low";
+        description = "No watercourses or flood monitoring stations nearby. Very low flood risk.";
+      }
+
+      return {
+        likelihood,
+        suitability: likelihood === "High" ? "Check local guidance" : likelihood === "Medium" ? "Moderate" : "High",
+        description,
+        station: nearestStation ? {
+          name: nearestStation.label || nearestStation.stationReference,
+          river: nearestStation.riverName || null,
+          distance: stationDist,
+          latestReading: stationReading
+        } : null,
+        activeAlerts: alertCount,
+        source: "Environment Agency"
+      };
     } catch (e) {
       console.error("Flood risk fetch failed:", e);
     }
-    return { likelihood: "Very Low", suitability: "High", description: "This area is at very low risk of flooding." };
+    return { likelihood: "Very Low", suitability: "High", description: "Flood risk data unavailable. Assumed very low risk.", station: null, activeAlerts: 0, source: "Estimated" };
+  };
+
+  const estimateNoise = () => {
+    let dayDb = 45;
+    const sources: string[] = [];
+
+    const majorRoads = elementsWithDistance.filter((e: any) =>
+      e.tags?.highway && ["motorway", "trunk", "primary", "motorway_link", "trunk_link"].includes(e.tags.highway)
+    );
+    const secondaryRoads = elementsWithDistance.filter((e: any) =>
+      e.tags?.highway && ["secondary", "tertiary"].includes(e.tags.highway)
+    );
+    const railways = elementsWithDistance.filter((e: any) =>
+      e.tags?.railway && ["rail", "light_rail", "subway", "tram"].includes(e.tags.railway)
+    );
+    const airports = elementsWithDistance.filter((e: any) =>
+      e.tags?.aeroway && ["aerodrome", "runway", "helipad"].includes(e.tags.aeroway)
+    );
+
+    const nearestMajorRoad = majorRoads.length > 0 ? majorRoads[0].distance : Infinity;
+    const nearestSecondary = secondaryRoads.length > 0 ? secondaryRoads[0].distance : Infinity;
+    const nearestRailway = railways.length > 0 ? railways[0].distance : Infinity;
+    const nearestAirport = airports.length > 0 ? airports[0].distance : Infinity;
+
+    if (nearestMajorRoad < 0.1) { dayDb += 20; sources.push("Adjacent to major road"); }
+    else if (nearestMajorRoad < 0.3) { dayDb += 14; sources.push(`Major road ${(nearestMajorRoad * 1000).toFixed(0)}m away`); }
+    else if (nearestMajorRoad < 0.5) { dayDb += 8; sources.push(`Major road ${(nearestMajorRoad * 1000).toFixed(0)}m away`); }
+
+    if (nearestSecondary < 0.1) { dayDb += 8; sources.push("Adjacent to secondary road"); }
+    else if (nearestSecondary < 0.3) { dayDb += 4; sources.push(`Secondary road nearby`); }
+
+    if (nearestRailway < 0.2) { dayDb += 10; sources.push(`Railway line ${(nearestRailway * 1000).toFixed(0)}m away`); }
+    else if (nearestRailway < 0.5) { dayDb += 6; sources.push(`Railway ${(nearestRailway * 1000).toFixed(0)}m away`); }
+
+    if (nearestAirport < 2) { dayDb += 12; sources.push("Near airport/aerodrome"); }
+    else if (nearestAirport < 5) { dayDb += 5; sources.push("Airport within 5km"); }
+
+    const pubBarCount = elementsWithDistance.filter((e: any) =>
+      e.distance < 0.3 && e.tags?.amenity && ["pub", "bar", "nightclub"].includes(e.tags.amenity)
+    ).length;
+    if (pubBarCount >= 5) { dayDb += 5; sources.push(`High nightlife density (${pubBarCount} venues within 300m)`); }
+    else if (pubBarCount >= 2) { dayDb += 2; sources.push(`${pubBarCount} pubs/bars within 300m`); }
+
+    dayDb = Math.min(dayDb, 85);
+    const nightDb = Math.max(25, dayDb - 12);
+
+    const level = dayDb < 50 ? "Quiet" : dayDb < 60 ? "Moderate" : dayDb < 70 ? "Loud" : "Very Loud";
+
+    if (sources.length === 0) sources.push("Quiet residential area");
+
+    return { day: dayDb, night: nightDb, level, sources };
   };
 
   const getMobileCoverage = async () => {
@@ -233,6 +446,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     ];
   };
 
+  const noiseEstimate = estimateNoise();
   const [airQuality, floodRisk, mobile, broadband] = await Promise.all([getAirQuality(), getFloodRisk(), getMobileCoverage(), getBroadbandAvailability()]);
 
   const commuteCityCenter = 45; 
@@ -276,11 +490,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     },
     environment: {
       airQuality,
-      noise: {
-        day: 55,
-        night: 40,
-        level: "Moderate"
-      },
+      noise: noiseEstimate,
       floodRisk
     },
     councilTax: {
@@ -343,12 +553,17 @@ async function fetchAreaMetrics(postcode: string) {
     [out:json][timeout:90];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
+      node["amenity"="nightclub"](around:500,${lat},${lng});
       node["amenity"~"school|college|university|kindergarten"](around:3000,${lat},${lng});
       way["amenity"~"school|college|university|kindergarten"](around:3000,${lat},${lng});
       node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
       node["railway"~"station|halt"](around:5000,${lat},${lng});
       way["railway"~"station|halt"](around:5000,${lat},${lng});
       way["highway"~"residential|unclassified|tertiary|secondary|primary"](around:50,${lat},${lng});
+      way["highway"~"motorway|trunk|primary|secondary|tertiary"](around:500,${lat},${lng});
+      way["railway"~"rail|light_rail|subway|tram"](around:500,${lat},${lng});
+      node["aeroway"~"aerodrome|helipad"](around:5000,${lat},${lng});
+      way["aeroway"~"aerodrome|runway"](around:5000,${lat},${lng});
     );
     out body center;
   `;

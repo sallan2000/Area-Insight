@@ -45,7 +45,7 @@ export function UserMenu() {
           </span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48 z-[60]">
         <div className="px-2 py-1.5">
           <p className="text-sm font-medium" data-testid="text-user-name">
             {[user.firstName, user.lastName].filter(Boolean).join(" ") || "User"}

@@ -4,15 +4,18 @@ import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
 import { z } from "zod";
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join } from "path";
 
 let lsoaBandLookup: Record<string, string> = {};
 try {
-  const data = readFileSync(join(__dirname, 'data', 'lsoa-council-tax-bands.json'), 'utf-8');
+  const basePath = join(process.cwd(), 'server', 'data', 'lsoa-council-tax-bands.json');
+  const distPath = join(process.cwd(), 'dist', 'data', 'lsoa-council-tax-bands.json');
+  let data: string;
+  try {
+    data = readFileSync(basePath, 'utf-8');
+  } catch {
+    data = readFileSync(distPath, 'utf-8');
+  }
   lsoaBandLookup = JSON.parse(data);
   console.log(`Loaded ${Object.keys(lsoaBandLookup).length} LSOA council tax band entries`);
 } catch (e) {

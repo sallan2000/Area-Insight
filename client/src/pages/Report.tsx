@@ -20,7 +20,10 @@ import {
   Download,
   Wind,
   Volume2,
-  Waves
+  Waves,
+  ShoppingCart,
+  ShoppingBag,
+  Building2
 } from "lucide-react";
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
@@ -535,7 +538,7 @@ export default function Report() {
                   title="Amenities"
                   score={scores.amenities}
                   icon={<Store className="w-6 h-6" />}
-                  description={`${raw.amenities?.totalCount || 0} shops, parks, and services`}
+                  description={`${raw.amenities?.totalCount || 0} shops, eateries, and local services`}
                   status={getOverallGrade(scores.amenities)}
                   isActive={activeTab === 'amenities'}
                   onClick={() => setActiveTab('amenities')}
@@ -654,12 +657,21 @@ export default function Report() {
                                 acc[cat].push(item);
                                 return acc;
                               }, {})
-                            ).map(([category, items]: [string, any]) => (
+                            ).map(([category, items]: [string, any]) => {
+                              const categoryIcons: Record<string, any> = {
+                                supermarket: <ShoppingCart className="h-3.5 w-3.5" />,
+                                convenience_store: <ShoppingBag className="h-3.5 w-3.5" />,
+                                shopping_centre: <Building2 className="h-3.5 w-3.5" />,
+                                department_store: <Store className="h-3.5 w-3.5" />,
+                              };
+                              const icon = categoryIcons[category] || null;
+                              return (
                               <div key={category}>
-                                <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">{category.replace(/_/g, ' ')}</h5>
+                                <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3 flex items-center gap-1.5">{icon}{category.replace(/_/g, ' ')}</h5>
                                 {renderAmenityList(items, category)}
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </ul>

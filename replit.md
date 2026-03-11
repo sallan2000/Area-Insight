@@ -67,7 +67,7 @@ The `shared/` directory contains code used by both frontend and backend:
 ### APIs
 - **postcodes.io**: UK postcode geocoding (latitude, longitude, outcode, LSOA codes)
 - **UK Police API**: Real-time crime statistics for locations
-- **OpenStreetMap Overpass API**: Amenities, schools, bus stops, train stations, major roads/railways/airports (for noise estimation)
+- **OpenStreetMap Overpass API**: Amenities (cafés, restaurants, pubs, libraries, pharmacies), retail (supermarkets, convenience stores, shopping centres, department stores), schools, bus stops, train stations, major roads/railways/airports (for noise estimation)
 - **DEFRA UK-AIR API**: Air quality monitoring stations and pollutant readings (with location-based heuristic fallback)
 - **Environment Agency Flood Monitoring API**: Flood alerts (5km radius), river/sea monitoring stations (3km), latest water levels
 

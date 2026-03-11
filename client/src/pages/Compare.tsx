@@ -17,7 +17,10 @@ import {
   Volume2,
   Waves,
   Download,
-  Share2
+  Share2,
+  ShoppingCart,
+  ShoppingBag,
+  Building2
 } from "lucide-react";
 import { 
   Dialog,
@@ -377,6 +380,55 @@ export default function Compare() {
                     })}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Amenities Breakdown */}
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {[
+                  { raw: raw1, postcode: report1.postcode },
+                  { raw: raw2, postcode: report2.postcode }
+                ].map(({ raw, postcode }) => {
+                  const list = raw?.amenities?.list || [];
+                  const grouped = list.reduce((acc: any, item: any) => {
+                    const cat = item.category || 'other';
+                    if (!acc[cat]) acc[cat] = [];
+                    acc[cat].push(item);
+                    return acc;
+                  }, {});
+                  const categoryIcons: Record<string, any> = {
+                    supermarket: <ShoppingCart className="h-3.5 w-3.5" />,
+                    convenience_store: <ShoppingBag className="h-3.5 w-3.5" />,
+                    shopping_centre: <Building2 className="h-3.5 w-3.5" />,
+                    department_store: <Store className="h-3.5 w-3.5" />,
+                  };
+                  return (
+                    <Card key={postcode} className="p-5" data-testid={`compare-amenities-${postcode}`}>
+                      <h4 className="font-bold mb-1 flex items-center gap-2">
+                        <Store className="h-4 w-4 text-primary" />
+                        {postcode} — Amenities
+                      </h4>
+                      <p className="text-xs text-muted-foreground mb-4">{list.length} shops, eateries, and local services</p>
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                        {Object.entries(grouped).slice(0, 8).map(([category, items]: [string, any]) => {
+                          const icon = categoryIcons[category] || null;
+                          return (
+                            <div key={category}>
+                              <h5 className="text-[10px] font-semibold text-muted-foreground uppercase mb-1 flex items-center gap-1">{icon}{category.replace(/_/g, ' ')}</h5>
+                              <div className="space-y-0.5">
+                                {items.slice(0, 3).map((item: any, i: number) => (
+                                  <div key={i} className="flex justify-between text-xs">
+                                    <span className="text-foreground truncate mr-2">{item.name}</span>
+                                    <span className="text-muted-foreground whitespace-nowrap">{item.distance < 1 ? `${Math.round(item.distance * 1000)}m` : `${item.distance.toFixed(1)}km`}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           </div>

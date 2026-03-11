@@ -51,6 +51,15 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
 
   const localAmenitiesElements = elementsWithDistance.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
   const essentialAmenitiesElements = elementsWithDistance.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));
+
+  const shopCategoryMap: Record<string, string> = {
+    supermarket: "supermarket",
+    convenience: "convenience_store",
+    mall: "shopping_centre",
+    department_store: "department_store",
+    shopping_centre: "shopping_centre",
+  };
+  const shopElements = elementsWithDistance.filter((e: any) => e.tags?.shop && shopCategoryMap[e.tags.shop]);
   
   // Get nearest facilities
   const getNearest = (list: any[], limit: number) => {
@@ -106,7 +115,10 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: e.distance })),
     ...essentialAmenitiesElements
       .filter(e => e.tags.name && e.tags.name !== "Unnamed")
-      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: e.distance }))
+      .map((e: any) => ({ name: e.tags.name, category: e.tags.amenity, distance: e.distance })),
+    ...shopElements
+      .filter((e: any) => e.tags.name && e.tags.name !== "Unnamed")
+      .map((e: any) => ({ name: e.tags.name, category: shopCategoryMap[e.tags.shop], distance: e.distance }))
   ].sort((a, b) => a.distance - b.distance);
 
   const busStops = busStopList.length;
@@ -114,6 +126,9 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
   const hasMajorHub = trainStationList.some(s => s.isHub) || busStopList.some(s => s.isHub);
   
   const categories = new Set(amenitiesList.map((e: any) => e.category));
+
+  const nearestSupermarket = amenitiesList.find((e: any) => e.category === "supermarket");
+  const nearestSupermarketDist = nearestSupermarket ? nearestSupermarket.distance : 5.0;
   
   // Distances and Densities
   const minTrainDist = trainStationList.length > 0 ? trainStationList[0].distance : 3.0;
@@ -500,6 +515,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       diversityIndex,
       totalCount: amenitiesList.length,
       topRatedPlaces: Math.min(10, Math.floor(amenitiesList.length / 4)),
+      nearestSupermarketDist,
       list: amenitiesList
     },
     schools: {
@@ -576,6 +592,8 @@ async function fetchAreaMetrics(postcode: string) {
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});
+      node["shop"~"supermarket|convenience|mall|department_store|shopping_centre"](around:2500,${lat},${lng});
+      way["shop"~"supermarket|convenience|mall|department_store|shopping_centre"](around:2500,${lat},${lng});
       node["amenity"~"school|college|university|kindergarten"](around:3000,${lat},${lng});
       way["amenity"~"school|college|university|kindergarten"](around:3000,${lat},${lng});
       node["highway"~"bus_stop|platform"](around:2000,${lat},${lng});
@@ -876,9 +894,10 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));
 
   const a1 = normalize(metrics.amenities.amenitiesCount, 0, 40);
-  const a2 = normalize(metrics.amenities.diversityIndex, 0, 10);
+  const a2 = normalize(metrics.amenities.diversityIndex, 0, 12);
   const a3 = normalize(metrics.amenities.topRatedPlaces, 0, 10);
-  const amenitiesScoreFinal = (a1 * 0.5 + a2 * 0.3 + a3 * 0.2);
+  const supermarketProximity = 100 - normalize(metrics.amenities.nearestSupermarketDist || 5, 0, 3);
+  const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
   const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
   const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);

@@ -482,8 +482,36 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     ];
   };
 
+  const getEvChargers = async () => {
+    try {
+      const apiKey = process.env.OPENCHARGEMAP_API_KEY;
+      if (!apiKey) return [];
+      const url = `https://api.openchargemap.io/v3/poi/?output=json&countrycode=GB&maxresults=5&latitude=${lat}&longitude=${lng}&distance=10&distanceunit=KM&key=${apiKey}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data || []).map((poi: any) => ({
+        name: poi.AddressInfo?.Title || "Unknown",
+        town: poi.AddressInfo?.Town || "",
+        distance: poi.AddressInfo?.Distance ? Math.round(poi.AddressInfo.Distance * 100) / 100 : null,
+        operator: poi.OperatorInfo?.Title || "Unknown",
+        numberOfPoints: poi.NumberOfPoints || poi.Connections?.reduce((sum: number, c: any) => sum + (c.Quantity || 1), 0) || 1,
+        usageCost: poi.UsageCost || null,
+        connections: (poi.Connections || []).map((c: any) => ({
+          type: c.ConnectionType?.Title || "Unknown",
+          level: c.Level?.Title || "",
+          powerKW: c.PowerKW || null,
+          quantity: c.Quantity || 1
+        }))
+      }));
+    } catch (e) {
+      console.error("EV charger fetch failed:", e);
+      return [];
+    }
+  };
+
   const noiseEstimate = estimateNoise();
-  const [airQuality, floodRisk, mobile, broadband] = await Promise.all([getAirQuality(), getFloodRisk(), getMobileCoverage(), getBroadbandAvailability()]);
+  const [airQuality, floodRisk, mobile, broadband, evChargers] = await Promise.all([getAirQuality(), getFloodRisk(), getMobileCoverage(), getBroadbandAvailability(), getEvChargers()]);
 
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
@@ -539,6 +567,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       broadband: broadband,
       mobile: mobile
     },
+    evChargers,
     nearestPostcodes,
     neighbourhood: neighbourhoodInfo ? {
       name: neighbourhoodInfo.name,

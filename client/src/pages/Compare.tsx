@@ -20,7 +20,8 @@ import {
   Share2,
   ShoppingCart,
   ShoppingBag,
-  Building2
+  Building2,
+  Zap
 } from "lucide-react";
 import { 
   Dialog,
@@ -356,6 +357,13 @@ export default function Compare() {
                       { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A' },
                       { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A' },
                       { name: 'Flood Risk', key: 'flood', icon: Waves, type: 'text', getValue: (r: any) => r?.environment?.floodRisk ? `${r.environment.floodRisk.likelihood}${r.environment.floodRisk.station?.river ? ` — ${r.environment.floodRisk.station.river}` : ''}` : 'N/A' },
+                      { name: 'Nearest EV Charger', key: 'evCharger', icon: Zap, type: 'text', getValue: (r: any) => {
+                        if (!r?.evChargers?.length) return 'N/A';
+                        const nearest = r.evChargers[0];
+                        const dist = nearest.distance != null ? (nearest.distance < 1 ? `${Math.round(nearest.distance * 1000)}m` : `${nearest.distance.toFixed(1)} km`) : '—';
+                        const totalPoints = r.evChargers.reduce((sum: number, c: any) => sum + (c.numberOfPoints || 1), 0);
+                        return `${dist} · ${totalPoints} pts`;
+                      }},
                     ].map((cat) => {
                       const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);
                       const val2 = cat.type === 'score' ? report2Scores[cat.key] : cat.getValue?.(raw2);

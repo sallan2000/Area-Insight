@@ -48,7 +48,7 @@ The server uses a storage abstraction pattern (`server/storage.ts`) for database
 ### Data Flow
 1. User submits postcode on Home page
 2. Backend geocodes postcode via postcodes.io API
-3. Backend fetches crime data, amenities, schools, and transport from external APIs
+3. Backend fetches crime data, amenities, schools, transport, and EV charger data from external APIs
 4. Scores are calculated and stored in PostgreSQL (with userId if logged in)
 5. User is redirected to Report page showing assessment results
 
@@ -70,6 +70,7 @@ The `shared/` directory contains code used by both frontend and backend:
 - **OpenStreetMap Overpass API**: Amenities (cafés, restaurants, pubs, libraries, pharmacies), retail (supermarkets, convenience stores, shopping centres, department stores), schools, bus stops, train stations, major roads/railways/airports (for noise estimation)
 - **DEFRA UK-AIR API**: Air quality monitoring stations and pollutant readings (with location-based heuristic fallback)
 - **Environment Agency Flood Monitoring API**: Flood alerts (5km radius), river/sea monitoring stations (3km), latest water levels
+- **OpenChargeMap API**: Nearest EV charging locations (5 results within 10km, UK only). Shows name, operator, distance, cost, connector types/power. API key stored as `OPENCHARGEMAP_API_KEY` env secret. Data stored in `rawMetrics.evChargers` — does NOT affect liveability score
 
 ### Static Data Files
 - **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates based on the most common band in each Lower Super Output Area. Falls back to outcode-based heuristic for Scottish postcodes or unmatched LSOAs.

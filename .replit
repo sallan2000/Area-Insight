@@ -41,3 +41,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_log_in_with_replit:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+OPENCHARGEMAP_API_KEY = "aa03c2b7-ba60-45cf-99f2-00fef6d5b799"

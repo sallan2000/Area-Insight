@@ -362,7 +362,7 @@ export default function Compare() {
                         const nearest = r.evChargers[0];
                         const dist = nearest.distance != null ? (nearest.distance < 1 ? `${Math.round(nearest.distance * 1000)}m` : `${nearest.distance.toFixed(1)} km`) : '—';
                         const totalPoints = r.evChargers.reduce((sum: number, c: any) => sum + (c.numberOfPoints || 1), 0);
-                        return `${dist} · ${totalPoints} pts`;
+                        return `${dist} · ${totalPoints} points`;
                       }},
                     ].map((cat) => {
                       const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);

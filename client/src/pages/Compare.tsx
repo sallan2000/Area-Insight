@@ -360,7 +360,7 @@ export default function Compare() {
                       { name: 'Nearest EV Charger', key: 'evCharger', icon: Zap, type: 'text', getValue: (r: any) => {
                         if (!r?.evChargers?.length) return 'N/A';
                         const nearest = r.evChargers[0];
-                        const dist = nearest.distance != null ? (nearest.distance < 1 ? `${Math.round(nearest.distance * 1000)}m` : `${nearest.distance.toFixed(1)} km`) : '—';
+                        const dist = nearest.distance != null ? `${nearest.distance.toFixed(1)} km` : '—';
                         const totalPoints = r.evChargers.reduce((sum: number, c: any) => sum + (c.numberOfPoints || 1), 0);
                         return `${dist} · ${totalPoints} points`;
                       }},

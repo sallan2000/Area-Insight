@@ -917,20 +917,22 @@ export default function Report() {
           </section>
 
           {/* EV Charging Section */}
-          {raw.evChargers && raw.evChargers.length > 0 && (
-            <section className="space-y-6" data-testid="section-ev-charging">
-              <h3 className="text-xl font-display font-bold px-1">EV Charging</h3>
-              <Card className="bg-white border-border shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="p-3 bg-yellow-50 rounded-xl text-yellow-600">
-                      <Zap className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold">Nearest Charge Points</h4>
-                      <p className="text-sm text-muted-foreground">{raw.evChargers.length} charger{raw.evChargers.length !== 1 ? 's' : ''} within 10 km</p>
-                    </div>
+          <section className="space-y-6" data-testid="section-ev-charging">
+            <h3 className="text-xl font-display font-bold px-1">EV Charging</h3>
+            <Card className="bg-white border-border shadow-sm">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="p-3 bg-yellow-50 rounded-xl text-yellow-600">
+                    <Zap className="w-6 h-6" />
                   </div>
+                  <div>
+                    <h4 className="font-bold">Nearest Charge Points</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {raw.evChargers?.length ? `${raw.evChargers.length} charger${raw.evChargers.length !== 1 ? 's' : ''} within 10 km` : 'Charge point availability'}
+                    </p>
+                  </div>
+                </div>
+                {raw.evChargers && raw.evChargers.length > 0 ? (
                   <div className="space-y-4">
                     {raw.evChargers.map((charger: any, i: number) => (
                       <div key={i} className="p-4 bg-gray-50 rounded-xl border border-border" data-testid={`ev-charger-${i}`}>
@@ -962,10 +964,14 @@ export default function Report() {
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            </section>
-          )}
+                ) : (
+                  <div className="p-6 bg-gray-50 rounded-xl border border-border text-center" data-testid="ev-charger-no-data">
+                    <p className="text-sm text-muted-foreground">No data available</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
 
           {/* Nearest Neighbourhoods */}
           {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (

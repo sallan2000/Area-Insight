@@ -943,9 +943,9 @@ export default function Report() {
                           </div>
                           <div className="flex items-center gap-2 ml-3 shrink-0">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                              charger.usageCost?.toLowerCase().includes('free') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'
+                              charger.usageCost?.toLowerCase().includes('free') ? 'bg-green-100 text-green-700' : charger.usageCost ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-500'
                             }`} data-testid={`ev-charger-cost-${i}`}>
-                              {charger.usageCost?.toLowerCase().includes('free') ? 'Free' : 'Paid'}
+                              {charger.usageCost?.toLowerCase().includes('free') ? 'Free' : charger.usageCost ? 'Paid' : 'Unknown'}
                             </span>
                             <span className="text-xs font-bold text-primary" data-testid={`ev-charger-distance-${i}`}>
                               {charger.distance != null ? (charger.distance < 1 ? `${Math.round(charger.distance * 1000)}m` : `${charger.distance.toFixed(1)} km`) : '—'}

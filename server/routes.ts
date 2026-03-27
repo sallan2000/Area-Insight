@@ -420,25 +420,39 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
 
   const getMobileCoverage = async () => {
     try {
-      const res = await fetch(`https://api.connectednation.io/v1/coverage?lat=${lat}&lon=${lng}`);
-      if (res.ok) {
-        const data = await res.json();
+      const apiKey = process.env.OFCOM_API_KEY;
+      if (!apiKey) throw new Error("OFCOM_API_KEY not set");
+      const cleanPostcode = postcode.replace(/\s+/g, "").toUpperCase();
+      const res = await fetch(
+        `https://api-proxy.ofcom.org.uk/mobile/coverage/${cleanPostcode}`,
+        { headers: { "Ocp-Apim-Subscription-Key": apiKey }, signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) throw new Error(`Ofcom API error: ${res.status}`);
+      const data = await res.json();
+      const addresses: any[] = data?.Addresses || [];
+      if (addresses.length === 0) return [];
+
+      const ops = [
+        { name: "EE", prefix: "EE" },
+        { name: "Vodafone", prefix: "VF" },
+        { name: "O2", prefix: "O2" },
+        { name: "Three", prefix: "TH" },
+      ];
+
+      return ops.map(({ name, prefix }) => {
+        const any = (field: string) => addresses.some((a) => a[field] === true);
         return {
-          fourG: data.fourG || "Good",
-          fiveG: data.fiveG || "Fair"
+          name,
+          data4GOutdoor: any(`${prefix}_DataOutdoor`),
+          data4GIndoor: any(`${prefix}_DataIndoor`),
+          data5GOutdoor: any(`${prefix}_Data5GOutdoor`),
+          data5GIndoor: any(`${prefix}_Data5GIndoor`),
         };
-      }
+      }).filter(op => op.data4GOutdoor || op.data4GIndoor || op.data5GOutdoor || op.data5GIndoor);
     } catch (e) {
       console.error("Mobile coverage fetch failed:", e);
+      return [];
     }
-    // Realistic fallback based on location type
-    const isUrban = geoData.result.admin_district?.toLowerCase().includes('london') || 
-                    geoData.result.admin_district?.toLowerCase().includes('manchester') ||
-                    geoData.result.admin_district?.toLowerCase().includes('birmingham');
-    return {
-      fourG: isUrban ? "Excellent" : "Good",
-      fiveG: isUrban ? "Good" : "Limited"
-    };
   };
 
   const getBroadbandAvailability = async () => {

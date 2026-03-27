@@ -71,6 +71,7 @@ The `shared/` directory contains code used by both frontend and backend:
 - **DEFRA UK-AIR API**: Air quality monitoring stations and pollutant readings (with location-based heuristic fallback)
 - **Environment Agency Flood Monitoring API**: Flood alerts (5km radius), river/sea monitoring stations (3km), latest water levels
 - **OpenChargeMap API**: Nearest EV charging locations (5 results within 10km, UK only). Shows name, operator, distance, cost, connector types/power. API key stored as `OPENCHARGEMAP_API_KEY` env secret. Data stored in `rawMetrics.evChargers` — does NOT affect liveability score
+- **Ofcom Connected Nations API**: Real per-operator mobile coverage by postcode. Returns 4G/5G outdoor/indoor availability for EE, Vodafone, O2, Three. API key stored as `OFCOM_API_KEY` env var. Endpoint: `https://api-proxy.ofcom.org.uk/mobile/coverage/{postcode}` with `Ocp-Apim-Subscription-Key` header. Aggregated across all addresses (UPRNs) in the postcode — field is true if any address has coverage.
 
 ### Static Data Files
 - **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates based on the most common band in each Lower Super Output Area. Falls back to outcode-based heuristic for Scottish postcodes or unmatched LSOAs.

@@ -898,19 +898,45 @@ export default function Report() {
                     </div>
                     <div>
                       <h4 className="font-bold">Mobile Coverage</h4>
-                      <p className="text-sm text-muted-foreground">Indoor & Outdoor signal</p>
+                      <p className="text-sm text-muted-foreground">Per-operator 4G & 5G data</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
-                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">4G Coverage</p>
-                      <p className="text-xl font-bold text-emerald-600">{raw.connectivity?.mobile.fourG}</p>
+                  {Array.isArray(raw.connectivity?.mobile) && raw.connectivity.mobile.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 mb-2 px-2">
+                        <span className="text-xs font-bold text-muted-foreground uppercase">Network</span>
+                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-14">4G Out</span>
+                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-14">4G In</span>
+                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-14">5G Out</span>
+                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-14">5G In</span>
+                      </div>
+                      {raw.connectivity.mobile.map((op: any, i: number) => (
+                        <div key={i} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center p-2 bg-gray-50 rounded-lg border border-border" data-testid={`mobile-op-${i}`}>
+                          <span className="text-sm font-bold text-foreground">{op.name}</span>
+                          {[op.data4GOutdoor, op.data4GIndoor, op.data5GOutdoor, op.data5GIndoor].map((val: boolean, j: number) => (
+                            <span key={j} className={`w-14 text-center text-base ${val ? 'text-emerald-500' : 'text-gray-300'}`}>
+                              {val ? '✓' : '✗'}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
                     </div>
-                    <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
-                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">5G Coverage</p>
-                      <p className="text-xl font-bold text-indigo-600">{raw.connectivity?.mobile.fiveG}</p>
+                  ) : raw.connectivity?.mobile?.fourG ? (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
+                        <p className="text-xs font-bold text-muted-foreground uppercase mb-2">4G Coverage</p>
+                        <p className="text-xl font-bold text-emerald-600">{raw.connectivity.mobile.fourG}</p>
+                      </div>
+                      <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
+                        <p className="text-xs font-bold text-muted-foreground uppercase mb-2">5G Coverage</p>
+                        <p className="text-xl font-bold text-indigo-600">{raw.connectivity.mobile.fiveG}</p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="p-6 bg-gray-50 rounded-xl border border-border text-center" data-testid="mobile-no-data">
+                      <p className="text-sm text-muted-foreground">No data available</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

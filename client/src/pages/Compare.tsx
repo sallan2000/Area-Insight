@@ -352,8 +352,16 @@ export default function Compare() {
                       { name: 'Amenities', key: 'amenities', icon: Store, type: 'score' },
                       { name: 'Council Tax', key: 'councilTax', icon: Receipt, type: 'text', getValue: (r: any) => r?.councilTax?.estimatedBand ? `Band ${r.councilTax.estimatedBand}` : 'N/A' },
                       { name: 'Broadband', key: 'broadband', icon: Wifi, type: 'text', getValue: getConnectivityValue },
-                      { name: '4G Signal', key: 'mobile4g', icon: Signal, type: 'text', getValue: (r: any) => r?.connectivity?.mobile?.fourG ? `${r.connectivity.mobile.fourG} (4G)` : 'N/A' },
-                      { name: '5G Signal', key: 'mobile5g', icon: Signal, type: 'text', getValue: (r: any) => r?.connectivity?.mobile?.fiveG ? `${r.connectivity.mobile.fiveG} (5G)` : 'N/A' },
+                      { name: 'Mobile Coverage', key: 'mobile', icon: Signal, type: 'text', getValue: (r: any) => {
+                        const m = r?.connectivity?.mobile;
+                        if (Array.isArray(m) && m.length > 0) {
+                          const g4 = m.filter((op: any) => op.data4GOutdoor).length;
+                          const g5 = m.filter((op: any) => op.data5GOutdoor).length;
+                          return `4G: ${g4}/4 · 5G: ${g5}/4`;
+                        }
+                        if (m?.fourG) return `4G: ${m.fourG} · 5G: ${m.fiveG}`;
+                        return 'N/A';
+                      }},
                       { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A' },
                       { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A' },
                       { name: 'Flood Risk', key: 'flood', icon: Waves, type: 'text', getValue: (r: any) => r?.environment?.floodRisk ? `${r.environment.floodRisk.likelihood}${r.environment.floodRisk.station?.river ? ` — ${r.environment.floodRisk.station.river}` : ''}` : 'N/A' },

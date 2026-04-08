@@ -357,7 +357,7 @@ export default function Compare() {
                         if (Array.isArray(m) && m.length > 0) {
                           const g4out = m.filter((op: any) => op.data4GOutdoor).length;
                           const g4in = m.filter((op: any) => op.data4GIndoor).length;
-                          return `4G outdoor: ${g4out}/4 · indoor: ${g4in}/4`;
+                          return `4G outdoor: ${g4out}/4 · 4G indoor: ${g4in}/4`;
                         }
                         if (m?.fourG) return `4G: ${m.fourG}`;
                         return 'N/A';

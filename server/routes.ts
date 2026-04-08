@@ -421,7 +421,12 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
   const getMobileCoverage = async () => {
     try {
       const apiKey = process.env.OFCOM_API_KEY;
-      if (!apiKey) throw new Error("OFCOM_API_KEY not set");
+      if (!apiKey) {
+        // OFCOM_API_KEY must be set as an environment variable (shared key for Ofcom
+        // Connected Nations API). Without it, mobile coverage data will be unavailable.
+        console.error("[Ofcom Mobile] OFCOM_API_KEY environment variable is not set — mobile coverage will be unavailable.");
+        return [];
+      }
       const cleanPostcode = geoData.result.postcode.replace(/\s+/g, "").toUpperCase();
       const res = await fetch(
         `https://api-proxy.ofcom.org.uk/mobile/coverage/${cleanPostcode}`,
@@ -432,6 +437,12 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       const addresses: any[] = data?.Availability || [];
       if (addresses.length === 0) return [];
 
+      // Log first raw address entry so field names/value types can be verified.
+      // Field names confirmed from Ofcom Connected Nations API (2024):
+      // {EE|VO|TF|H3}DataOutdoor / {EE|VO|TF|H3}DataIndoor
+      // Values are integers: 0 = no coverage, >0 = coverage predicted at that address.
+      console.log("[Ofcom Mobile] sample UPRN entry keys:", Object.keys(addresses[0]).filter(k => k !== "UPRN" && k !== "PostCode" && k !== "AddressShortDescription").join(", "));
+
       const ops = [
         { name: "EE", prefix: "EE" },
         { name: "Vodafone", prefix: "VO" },
@@ -440,8 +451,10 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       ];
 
       // Require ≥50% of addresses in the postcode to have coverage before
-      // marking the operator as covered. The old .some() was too lenient —
-      // a single address with signal would mark the entire postcode as covered.
+      // marking the operator as covered. Using .some() (any address) was too
+      // lenient — a single address with signal would mark the entire postcode
+      // as covered. The majority threshold gives more accurate results at the
+      // edges of coverage zones.
       const majorityThreshold = 0.5;
       const covered = (field: string) => {
         const total = addresses.length;

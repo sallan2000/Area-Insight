@@ -439,14 +439,22 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
         { name: "Three", prefix: "H3" },
       ];
 
-      return ops.map(({ name, prefix }) => {
-        const covered = (field: string) => addresses.some((a) => (a[field] ?? 0) > 0);
-        return {
-          name,
-          data4GOutdoor: covered(`${prefix}DataOutdoor`),
-          data4GIndoor: covered(`${prefix}DataIndoor`),
-        };
-      });
+      // Require ≥50% of addresses in the postcode to have coverage before
+      // marking the operator as covered. The old .some() was too lenient —
+      // a single address with signal would mark the entire postcode as covered.
+      const majorityThreshold = 0.5;
+      const covered = (field: string) => {
+        const total = addresses.length;
+        if (total === 0) return false;
+        const coveredCount = addresses.filter((a) => (a[field] ?? 0) > 0).length;
+        return coveredCount / total >= majorityThreshold;
+      };
+
+      return ops.map(({ name, prefix }) => ({
+        name,
+        data4GOutdoor: covered(`${prefix}DataOutdoor`),
+        data4GIndoor: covered(`${prefix}DataIndoor`),
+      }));
     } catch (e) {
       console.error("Mobile coverage fetch failed:", e);
       return [];

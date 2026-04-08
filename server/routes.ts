@@ -455,43 +455,35 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
 
   const getBroadbandAvailability = async () => {
     try {
-      // Mocking USwitch-style lookup logic based on location
-      const isUrban = geoData.result.admin_district?.toLowerCase().includes('london') || 
-                      geoData.result.admin_district?.toLowerCase().includes('manchester') ||
-                      geoData.result.admin_district?.toLowerCase().includes('birmingham');
-      
-      const isVeryRural = geoData.result.admin_district?.toLowerCase().includes('highlands') || 
-                          geoData.result.admin_district?.toLowerCase().includes('islands');
+      const apiKey = process.env.OFCOM_BROADBAND_API_KEY;
+      if (!apiKey) throw new Error("OFCOM_BROADBAND_API_KEY not set");
+      const cleanPostcode = geoData.result.postcode.replace(/\s+/g, "").toUpperCase();
+      const res = await fetch(
+        `https://api-proxy.ofcom.org.uk/broadband/coverage/${cleanPostcode}`,
+        { headers: { "Ocp-Apim-Subscription-Key": apiKey }, signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) throw new Error(`Ofcom broadband API error: ${res.status}`);
+      const data = await res.json();
+      const addresses: any[] = data?.Availability || [];
+      if (addresses.length === 0) return [];
 
-      if (isVeryRural) {
-        return [
-          { type: "Standard", speed: "5 Mbps", availability: "Likely" },
-          { type: "Superfast", speed: "24 Mbps", availability: "Possible" },
-          { type: "Ultrafast", speed: "N/A", availability: "Unlikely" }
-        ];
-      }
+      const maxOf = (field: string) => addresses.reduce((max: number, a: any) => Math.max(max, a[field] ?? 0), 0);
 
-      if (isUrban) {
-        return [
-          { type: "Standard", speed: "11 Mbps", availability: "Likely" },
-          { type: "Superfast", speed: "80 Mbps", availability: "Likely" },
-          { type: "Ultrafast", speed: "1000 Mbps", availability: "Likely" }
-        ];
-      }
-
-      return [
-        { type: "Standard", speed: "11 Mbps", availability: "Likely" },
-        { type: "Superfast", speed: "60 Mbps", availability: "Likely" },
-        { type: "Ultrafast", speed: "300 Mbps", availability: "Possible" }
+      const tiers = [
+        { type: "Standard",  downField: "MaxBbPredictedDown",   upField: "MaxBbPredictedUp" },
+        { type: "Superfast", downField: "MaxSfbbPredictedDown", upField: "MaxSfbbPredictedUp" },
+        { type: "Ultrafast", downField: "MaxUfbbPredictedDown", upField: "MaxUfbbPredictedUp" },
       ];
+
+      return tiers.map(({ type, downField, upField }) => {
+        const maxDownMbps = maxOf(downField);
+        const maxUpMbps = maxOf(upField);
+        return { type, maxDownMbps, maxUpMbps, available: maxDownMbps > 0 };
+      });
     } catch (e) {
       console.error("Broadband availability fetch failed:", e);
+      return [];
     }
-    return [
-      { type: "Standard", speed: "11 Mbps", availability: "Likely" },
-      { type: "Superfast", speed: "80 Mbps", availability: "Likely" },
-      { type: "Ultrafast", speed: "1000 Mbps", availability: "Likely" }
-    ];
   };
 
   const getEvChargers = async () => {

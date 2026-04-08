@@ -422,7 +422,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
     try {
       const apiKey = process.env.OFCOM_API_KEY;
       if (!apiKey) throw new Error("OFCOM_API_KEY not set");
-      const cleanPostcode = postcode.replace(/\s+/g, "").toUpperCase();
+      const cleanPostcode = geoData.result.postcode.replace(/\s+/g, "").toUpperCase();
       const res = await fetch(
         `https://api-proxy.ofcom.org.uk/mobile/coverage/${cleanPostcode}`,
         { headers: { "Ocp-Apim-Subscription-Key": apiKey }, signal: AbortSignal.timeout(10000) }

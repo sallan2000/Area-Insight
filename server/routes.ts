@@ -429,26 +429,24 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       );
       if (!res.ok) throw new Error(`Ofcom API error: ${res.status}`);
       const data = await res.json();
-      const addresses: any[] = data?.Addresses || [];
+      const addresses: any[] = data?.Availability || [];
       if (addresses.length === 0) return [];
 
       const ops = [
         { name: "EE", prefix: "EE" },
-        { name: "Vodafone", prefix: "VF" },
-        { name: "O2", prefix: "O2" },
-        { name: "Three", prefix: "TH" },
+        { name: "Vodafone", prefix: "VO" },
+        { name: "O2", prefix: "TF" },
+        { name: "Three", prefix: "H3" },
       ];
 
       return ops.map(({ name, prefix }) => {
-        const any = (field: string) => addresses.some((a) => a[field] === true);
+        const covered = (field: string) => addresses.some((a) => (a[field] ?? 0) > 0);
         return {
           name,
-          data4GOutdoor: any(`${prefix}_DataOutdoor`),
-          data4GIndoor: any(`${prefix}_DataIndoor`),
-          data5GOutdoor: any(`${prefix}_Data5GOutdoor`),
-          data5GIndoor: any(`${prefix}_Data5GIndoor`),
+          data4GOutdoor: covered(`${prefix}DataOutdoor`),
+          data4GIndoor: covered(`${prefix}DataIndoor`),
         };
-      }).filter(op => op.data4GOutdoor || op.data4GIndoor || op.data5GOutdoor || op.data5GIndoor);
+      }).filter(op => op.data4GOutdoor || op.data4GIndoor);
     } catch (e) {
       console.error("Mobile coverage fetch failed:", e);
       return [];

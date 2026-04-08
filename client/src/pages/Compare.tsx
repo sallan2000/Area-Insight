@@ -133,9 +133,10 @@ export default function Compare() {
   const raw2 = report2?.rawMetrics as any;
 
   const getConnectivityValue = (raw: any) => {
-    if (!raw?.connectivity?.broadband) return "N/A";
+    if (!Array.isArray(raw?.connectivity?.broadband) || raw.connectivity.broadband.length === 0) return "N/A";
     const ultra = raw.connectivity.broadband.find((b: any) => b.type === "Ultrafast");
-    return ultra ? ultra.speed : "N/A";
+    if (!ultra) return "N/A";
+    return ultra.available ? `${Math.round(ultra.maxDownMbps)} Mbps` : "Not available";
   };
 
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);

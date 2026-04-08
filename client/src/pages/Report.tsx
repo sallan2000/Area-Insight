@@ -245,6 +245,21 @@ export default function Report() {
   const scores = report.scores as any;
   const raw = report.rawMetrics as any;
 
+  const safetyViolent = raw.safetyBreakdown?.violent || 0;
+  const safetyTheft   = raw.safetyBreakdown?.theft   || 0;
+  const safetyVehicle = raw.safetyBreakdown?.vehicle || 0;
+  const safetyDrugs   = raw.safetyBreakdown?.drugs   || 0;
+  const safetyAsb     = raw.safetyBreakdown?.asb     || 0;
+  const safetyOther   = Math.max(0, (raw.crimeCount || 0) - (safetyViolent + safetyTheft + safetyVehicle + safetyDrugs + safetyAsb));
+  const safetyBreakdownItems = [
+    { label: 'Violent & Weapons',     value: safetyViolent,  color: 'bg-red-500' },
+    { label: 'Theft & Burglary',      value: safetyTheft,    color: 'bg-orange-500' },
+    { label: 'Vehicle Crime',         value: safetyVehicle,  color: 'bg-amber-500' },
+    { label: 'Drug Related',          value: safetyDrugs,    color: 'bg-blue-500' },
+    { label: 'Anti-Social Behaviour', value: safetyAsb,      color: 'bg-gray-500' },
+    ...(safetyOther > 0 ? [{ label: 'Other', value: safetyOther, color: 'bg-slate-400' }] : []),
+  ];
+
   const getOverallGrade = (score: number) => {
     if (score >= 80) return "Outstanding";
     if (score >= 60) return "Good";
@@ -602,13 +617,7 @@ export default function Report() {
                               </div>
                             )}
                             <div className="space-y-3">
-                              {[
-                                { label: 'Violent & Weapons', value: raw.safetyBreakdown?.violent || 0, color: 'bg-red-500' },
-                                { label: 'Theft & Burglary', value: raw.safetyBreakdown?.theft || 0, color: 'bg-orange-500' },
-                                { label: 'Vehicle Crime', value: raw.safetyBreakdown?.vehicle || 0, color: 'bg-amber-500' },
-                                { label: 'Drug Related', value: raw.safetyBreakdown?.drugs || 0, color: 'bg-blue-500' },
-                                { label: 'Anti-Social Behavior', value: raw.safetyBreakdown?.asb || 0, color: 'bg-gray-500' },
-                              ].map((item) => (
+                              {safetyBreakdownItems.map((item) => (
                                 <div key={item.label} className="space-y-1">
                                   <div className="flex justify-between text-xs font-medium">
                                     <span>{item.label}</span>

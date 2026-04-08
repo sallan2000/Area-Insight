@@ -355,11 +355,11 @@ export default function Compare() {
                       { name: 'Mobile Coverage', key: 'mobile', icon: Signal, type: 'text', getValue: (r: any) => {
                         const m = r?.connectivity?.mobile;
                         if (Array.isArray(m) && m.length > 0) {
-                          const g4 = m.filter((op: any) => op.data4GOutdoor).length;
-                          const g5 = m.filter((op: any) => op.data5GOutdoor).length;
-                          return `4G: ${g4}/4 · 5G: ${g5}/4`;
+                          const g4out = m.filter((op: any) => op.data4GOutdoor).length;
+                          const g4in = m.filter((op: any) => op.data4GIndoor).length;
+                          return `4G outdoor: ${g4out}/4 · indoor: ${g4in}/4`;
                         }
-                        if (m?.fourG) return `4G: ${m.fourG} · 5G: ${m.fiveG}`;
+                        if (m?.fourG) return `4G: ${m.fourG}`;
                         return 'N/A';
                       }},
                       { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A' },

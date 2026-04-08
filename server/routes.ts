@@ -6,6 +6,9 @@ import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
 
+// One-time flag: log Ofcom mobile API schema once per process to confirm field names/types.
+let ofcomMobileSchemaLogged = false;
+
 let lsoaBandLookup: Record<string, string> = {};
 try {
   const basePath = join(process.cwd(), 'server', 'data', 'lsoa-council-tax-bands.json');
@@ -437,11 +440,16 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
       const addresses: any[] = data?.Availability || [];
       if (addresses.length === 0) return [];
 
-      // Log first raw address entry so field names/value types can be verified.
-      // Field names confirmed from Ofcom Connected Nations API (2024):
-      // {EE|VO|TF|H3}DataOutdoor / {EE|VO|TF|H3}DataIndoor
-      // Values are integers: 0 = no coverage, >0 = coverage predicted at that address.
-      console.log("[Ofcom Mobile] sample UPRN entry keys:", Object.keys(addresses[0]).filter(k => k !== "UPRN" && k !== "PostCode" && k !== "AddressShortDescription").join(", "));
+      // Log a sanitised sample of the first UPRN entry once per process so field
+      // names and value types can be confirmed from workflow logs. PII fields
+      // (UPRN, AddressShortDescription, PostCode) are excluded.
+      if (!ofcomMobileSchemaLogged) {
+        ofcomMobileSchemaLogged = true;
+        const sample = Object.fromEntries(
+          Object.entries(addresses[0]).filter(([k]) => k !== "UPRN" && k !== "PostCode" && k !== "AddressShortDescription")
+        );
+        console.log("[Ofcom Mobile] field schema sample (one-time):", JSON.stringify(sample));
+      }
 
       const ops = [
         { name: "EE", prefix: "EE" },

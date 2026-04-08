@@ -871,22 +871,32 @@ export default function Report() {
                     </div>
                     <div>
                       <h4 className="font-bold">Broadband Availability</h4>
-                      <p className="text-sm text-muted-foreground">Local infrastructure status</p>
+                      <p className="text-sm text-muted-foreground">Predicted speeds by tier</p>
                     </div>
                   </div>
-                  <div className="space-y-4">
-                    {raw.connectivity?.broadband.map((b: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                        <div>
-                          <p className="text-sm font-bold text-foreground">{b.type}</p>
-                          <p className="text-xs text-muted-foreground">Up to {b.speed}</p>
+                  {Array.isArray(raw.connectivity?.broadband) && raw.connectivity.broadband.length > 0 ? (
+                    <div className="space-y-3">
+                      {raw.connectivity.broadband.map((b: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                          <div>
+                            <p className="text-sm font-bold text-foreground">{b.type}</p>
+                            {b.available ? (
+                              <p className="text-xs text-muted-foreground">
+                                ↓ {Math.round(b.maxDownMbps)} Mbps &nbsp;·&nbsp; ↑ {Math.round(b.maxUpMbps)} Mbps
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">Not available at this postcode</p>
+                            )}
+                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-md ${b.available ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {b.available ? 'Available' : 'Not available'}
+                          </span>
                         </div>
-                        <span className="text-xs font-bold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md">
-                          {b.availability}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No broadband data available</p>
+                  )}
                 </CardContent>
               </Card>
 

@@ -446,7 +446,7 @@ async function processElements(elements: any[], lat: number, lng: number, geoDat
           data4GOutdoor: covered(`${prefix}DataOutdoor`),
           data4GIndoor: covered(`${prefix}DataIndoor`),
         };
-      }).filter(op => op.data4GOutdoor || op.data4GIndoor);
+      });
     } catch (e) {
       console.error("Mobile coverage fetch failed:", e);
       return [];

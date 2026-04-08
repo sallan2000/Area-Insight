@@ -898,7 +898,7 @@ export default function Report() {
                     </div>
                     <div>
                       <h4 className="font-bold">Mobile Coverage</h4>
-                      <p className="text-sm text-muted-foreground">Per-operator 4G & 5G data</p>
+                      <p className="text-sm text-muted-foreground">Per-operator 4G indoor & outdoor</p>
                     </div>
                   </div>
                   {Array.isArray(raw.connectivity?.mobile) && raw.connectivity.mobile.length > 0 ? (
@@ -920,15 +920,9 @@ export default function Report() {
                       ))}
                     </div>
                   ) : raw.connectivity?.mobile?.fourG ? (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
-                        <p className="text-xs font-bold text-muted-foreground uppercase mb-2">4G Coverage</p>
-                        <p className="text-xl font-bold text-emerald-600">{raw.connectivity.mobile.fourG}</p>
-                      </div>
-                      <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
-                        <p className="text-xs font-bold text-muted-foreground uppercase mb-2">5G Coverage</p>
-                        <p className="text-xl font-bold text-indigo-600">{raw.connectivity.mobile.fiveG}</p>
-                      </div>
+                    <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
+                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">4G Coverage</p>
+                      <p className="text-xl font-bold text-emerald-600">{raw.connectivity.mobile.fourG}</p>
                     </div>
                   ) : (
                     <div className="p-6 bg-gray-50 rounded-xl border border-border text-center" data-testid="mobile-no-data">

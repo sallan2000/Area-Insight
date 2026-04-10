@@ -355,7 +355,7 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.osm.ch/api/interpreter"
   ];
   const overpassQuery = `
-    [out:json][timeout:25];
+    [out:json][timeout:90];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});

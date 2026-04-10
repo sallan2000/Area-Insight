@@ -354,8 +354,14 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter"
   ];
+  // [timeout:90]: server-side execution budget — lets the Overpass server finish the query.
+  // AbortSignal.timeout(35000): client-side hard ceiling per mirror — if the server hasn't
+  // responded in 35 s we abandon it and let the other racing mirrors win.
+  // Previous [timeout:25] caused the server to cut the query short and return empty elements
+  // (no remark) which Promise.any() incorrectly accepted as a valid empty result, scoring
+  // transport/schools/amenities as 0 for all dense urban postcodes.
   const overpassQuery = `
-    [out:json][timeout:25];
+    [out:json][timeout:90];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});
@@ -375,22 +381,38 @@ async function fetchAreaMetrics(postcode: string) {
     out body center;
   `;
 
-  // Race all mirrors simultaneously — first valid response wins, each with its own 25 s timeout.
-  // [timeout:25] in the query body is the server-side execution limit; AbortSignal.timeout(25000)
-  // is the independent client-side ceiling per mirror (aborts the TCP connection if the server
-  // does not respond within 25 s). With all mirrors racing, the fastest one wins immediately.
+  // Race all 3 mirrors simultaneously — first to return non-empty valid data wins.
+  // Mirrors that return the Overpass server-timeout remark ("runtime error … exceeded")
+  // or return empty elements are rejected so the race continues to other mirrors.
   const fetchFromOverpass = async (): Promise<any[]> => {
     const tryMirror = async (endpoint: string): Promise<any[]> => {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
         body: `data=${encodeURIComponent(overpassQuery)}`,
-        signal: AbortSignal.timeout(25000)
+        signal: AbortSignal.timeout(35000)
       });
       if (!res.ok) throw new Error(`Overpass (${endpoint}): HTTP ${res.status}`);
       const data = await res.json();
-      if (data.remark?.includes("timeout")) throw new Error(`Overpass server timeout on ${endpoint}`);
-      return data.elements || [];
+      // Overpass remark when query is cut short: "runtime error: Query run time limit exceeded.
+      // Aborting after N seconds." — note the word is "exceeded", not "timeout".
+      if (data.remark && (
+        data.remark.includes("exceeded") ||
+        data.remark.includes("runtime error") ||
+        data.remark.includes("Aborting") ||
+        data.remark.includes("timeout")
+      )) {
+        throw new Error(`Overpass query cut short on ${endpoint}: ${data.remark.slice(0, 120)}`);
+      }
+      const elements: any[] = data.elements || [];
+      // An empty response from an Overpass mirror almost always means the query was
+      // cut off before it could find nearby features — reject it so the race tries
+      // other mirrors. Genuinely feature-free areas will cause all mirrors to throw
+      // here, and the outer catch safely returns [].
+      if (elements.length === 0) {
+        throw new Error(`Overpass (${endpoint}): returned 0 elements — query likely timed out on server`);
+      }
+      return elements;
     };
 
     try {
@@ -400,7 +422,9 @@ async function fetchAreaMetrics(postcode: string) {
         )
       );
     } catch {
-      throw new Error("All Overpass mirrors failed");
+      // All mirrors failed — return empty so the rest of the assessment still proceeds
+      // (safety/environment/connectivity scores will still be calculated correctly)
+      return [];
     }
   };
 

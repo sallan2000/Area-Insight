@@ -375,29 +375,40 @@ async function fetchAreaMetrics(postcode: string) {
     out body center;
   `;
 
+  // Race all mirrors simultaneously — first valid response wins, losers are cancelled.
+  // [timeout:90] in the query lets the server finish the query; the overall 40 s
+  // AbortController budget is the hard client-side ceiling across ALL mirrors.
   const fetchFromOverpass = async (): Promise<any[]> => {
-    let lastError: any = null;
-    for (const endpoint of overpassEndpoints) {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
-            body: `data=${encodeURIComponent(overpassQuery)}`,
-            signal: AbortSignal.timeout(25000)
-          });
-          if (!res.ok) throw new Error(`Overpass API Error (${endpoint}) attempt ${attempt}: ${res.status} ${res.statusText}`);
-          const data = await res.json();
-          if (data.remark && data.remark.includes("timeout")) throw new Error(`Overpass API timeout (${endpoint}) attempt ${attempt}`);
-          return data.elements || [];
-        } catch (e: any) {
-          console.warn(`Overpass attempt ${attempt} at ${endpoint} failed:`, e.message);
-          lastError = e;
-          if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        }
-      }
+    const controller = new AbortController();
+    const budgetTimer = setTimeout(() => controller.abort(), 40000);
+
+    const tryMirror = async (endpoint: string): Promise<any[]> => {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
+        body: `data=${encodeURIComponent(overpassQuery)}`,
+        signal: controller.signal
+      });
+      if (!res.ok) throw new Error(`Overpass (${endpoint}): HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.remark?.includes("timeout")) throw new Error(`Overpass server timeout on ${endpoint}`);
+      return data.elements || [];
+    };
+
+    try {
+      const result = await Promise.any(
+        overpassEndpoints.map(ep =>
+          tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
+        )
+      );
+      clearTimeout(budgetTimer);
+      controller.abort();
+      return result;
+    } catch {
+      clearTimeout(budgetTimer);
+      controller.abort();
+      throw new Error("All Overpass mirrors failed");
     }
-    throw lastError || new Error("All Overpass endpoints failed");
   };
 
   // 2b. Crime — neighbourhood lookup (sequential, must precede monthly batch) then 12 months in parallel
@@ -507,8 +518,8 @@ async function fetchAreaMetrics(postcode: string) {
   const getFloodRisk = async (): Promise<any> => {
     try {
       const [alertsRes, stationsRes] = await Promise.all([
-        fetch(`https://environment.data.gov.uk/flood-monitoring/id/floods?lat=${lat}&long=${lng}&dist=5`),
-        fetch(`https://environment.data.gov.uk/flood-monitoring/id/stations?lat=${lat}&long=${lng}&dist=3&_limit=5`)
+        fetch(`https://environment.data.gov.uk/flood-monitoring/id/floods?lat=${lat}&long=${lng}&dist=5`, { signal: AbortSignal.timeout(8000) }),
+        fetch(`https://environment.data.gov.uk/flood-monitoring/id/stations?lat=${lat}&long=${lng}&dist=3&_limit=5`, { signal: AbortSignal.timeout(8000) })
       ]);
       let alertCount = 0, alertSeverity = "None";
       if (alertsRes.ok) {
@@ -528,7 +539,7 @@ async function fetchAreaMetrics(postcode: string) {
         nearestStation = riverStations.length > 0 ? riverStations[0] : (stations.length > 0 ? stations[0] : null);
         if (nearestStation) {
           try {
-            const readingRes = await fetch(`${nearestStation["@id"]}/readings?_sorted&_limit=1`);
+            const readingRes = await fetch(`${nearestStation["@id"]}/readings?_sorted&_limit=1`, { signal: AbortSignal.timeout(5000) });
             if (readingRes.ok) {
               const readingData = await readingRes.json();
               if (readingData.items?.length > 0) stationReading = { value: readingData.items[0].value, dateTime: readingData.items[0].dateTime };
@@ -618,7 +629,7 @@ async function fetchAreaMetrics(postcode: string) {
   // 2h. Nearest postcodes (for background pre-fetching after response)
   const fetchNearest = async (): Promise<string[]> => {
     try {
-      const res = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`);
+      const res = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`, { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
         const nearestData = await res.json();
         return nearestData.result.filter((p: any) => p.postcode !== geoData.result.postcode).slice(0, 5).map((p: any) => p.postcode);

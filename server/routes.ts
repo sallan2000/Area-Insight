@@ -355,7 +355,7 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.osm.ch/api/interpreter"
   ];
   const overpassQuery = `
-    [out:json][timeout:90];
+    [out:json][timeout:25];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});
@@ -375,19 +375,17 @@ async function fetchAreaMetrics(postcode: string) {
     out body center;
   `;
 
-  // Race all mirrors simultaneously — first valid response wins, losers are cancelled.
-  // [timeout:90] in the query lets the server finish the query; the overall 40 s
-  // AbortController budget is the hard client-side ceiling across ALL mirrors.
+  // Race all mirrors simultaneously — first valid response wins, each with its own 25 s timeout.
+  // [timeout:25] in the query body is the server-side execution limit; AbortSignal.timeout(25000)
+  // is the independent client-side ceiling per mirror (aborts the TCP connection if the server
+  // does not respond within 25 s). With all mirrors racing, the fastest one wins immediately.
   const fetchFromOverpass = async (): Promise<any[]> => {
-    const controller = new AbortController();
-    const budgetTimer = setTimeout(() => controller.abort(), 40000);
-
     const tryMirror = async (endpoint: string): Promise<any[]> => {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
         body: `data=${encodeURIComponent(overpassQuery)}`,
-        signal: controller.signal
+        signal: AbortSignal.timeout(25000)
       });
       if (!res.ok) throw new Error(`Overpass (${endpoint}): HTTP ${res.status}`);
       const data = await res.json();
@@ -396,17 +394,12 @@ async function fetchAreaMetrics(postcode: string) {
     };
 
     try {
-      const result = await Promise.any(
+      return await Promise.any(
         overpassEndpoints.map(ep =>
           tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
         )
       );
-      clearTimeout(budgetTimer);
-      controller.abort();
-      return result;
     } catch {
-      clearTimeout(budgetTimer);
-      controller.abort();
       throw new Error("All Overpass mirrors failed");
     }
   };

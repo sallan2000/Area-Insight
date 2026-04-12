@@ -75,7 +75,8 @@ The `shared/` directory contains code used by both frontend and backend:
 - **Ofcom Connected Nations Broadband API**: Real per-address predicted broadband speeds by postcode. Returns max predicted download/upload speeds for Standard (basic), Superfast, and Ultrafast tiers. API key stored as `OFCOM_BROADBAND_API_KEY` secret. Endpoint: `https://api-proxy.ofcom.org.uk/broadband/coverage/{postcode}` with `Ocp-Apim-Subscription-Key` header. Aggregated across all UPRNs by taking the maximum speed. Fields: `MaxBbPredictedDown/Up`, `MaxSfbbPredictedDown/Up`, `MaxUfbbPredictedDown/Up`.
 
 ### Static Data Files
-- **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates based on the most common band in each Lower Super Output Area. Falls back to outcode-based heuristic for Scottish postcodes or unmatched LSOAs.
+- **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates for England (E01 codes) and Wales (W01 codes). Falls back to Scottish council lookup or outcode heuristic.
+- **`server/data/scotland-council-tax-bands.json`**: 32 Scottish local authority (S12000xxx) to modal council tax band mappings. Sourced from NRS Dwellings by Council Tax Band statistics (2024). Used as fallback for Scottish postcodes where VOA data doesn't apply (Scotland is SAA jurisdiction). Lookup key is `codes.admin_district` from postcodes.io. Source label: "SAA (council area, 2024)".
 
 ### Environmental Quality Data
 - **Air Quality**: Proper UK DAQI (1-10 scale) using DEFRA bands for PM2.5, PM10, NO₂, O₃. Primary source: DEFRA UK-AIR nearest station. Fallback: location-based heuristic estimating pollutant levels from urban classification and proximity to major roads

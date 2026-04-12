@@ -61,6 +61,7 @@ async function buildAll() {
 
   await mkdir("dist/data", { recursive: true });
   await copyFile("server/data/lsoa-council-tax-bands.json", "dist/data/lsoa-council-tax-bands.json");
+  await copyFile("server/data/scotland-council-tax-bands.json", "dist/data/scotland-council-tax-bands.json");
   console.log("copied static data files to dist/data/");
 }
 

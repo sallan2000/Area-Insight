@@ -492,7 +492,7 @@ export default function Report() {
                       <div>
                         <h3 className="text-lg font-bold">Local Council Tax</h3>
                         <p className="text-sm text-muted-foreground">
-                          {raw.councilTax.source === "VOA (2024)" ? "Most common band" : "Estimated band"} for properties in <span className="font-semibold">{report.postcode}</span>: 
+                          {(raw.councilTax.source === "VOA (2024)" || raw.councilTax.source?.startsWith("SAA")) ? "Most common band" : "Estimated band"} for properties in <span className="font-semibold">{report.postcode}</span>: 
                           <span className="ml-1 text-foreground font-bold" data-testid="text-council-tax-band">Band {raw.councilTax.estimatedBand}</span>
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-council-tax-source">

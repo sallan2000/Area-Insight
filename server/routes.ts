@@ -25,6 +25,26 @@ try {
   console.error("Failed to load LSOA council tax band data:", e);
 }
 
+// Modal council tax band per Scottish local authority (S12000xxx codes from postcodes.io).
+// Source: NRS Dwellings by Council Tax Band statistics + SAA published data (2024).
+// Derived from the distribution of dwellings across bands A–H per council area,
+// using the 1 April 1991 valuation baseline common to the whole of Great Britain.
+let scotlandCouncilBandLookup: Record<string, string> = {};
+try {
+  const basePath = join(process.cwd(), 'server', 'data', 'scotland-council-tax-bands.json');
+  const distPath = join(process.cwd(), 'dist', 'data', 'scotland-council-tax-bands.json');
+  let data: string;
+  try {
+    data = readFileSync(basePath, 'utf-8');
+  } catch {
+    data = readFileSync(distPath, 'utf-8');
+  }
+  scotlandCouncilBandLookup = JSON.parse(data);
+  console.log(`Loaded ${Object.keys(scotlandCouncilBandLookup).length} Scottish council tax band entries`);
+} catch (e) {
+  console.error("Failed to load Scottish council tax band data:", e);
+}
+
 // Helper function to calculate distance between two points in km using Haversine formula
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; // Radius of the earth in km
@@ -155,22 +175,36 @@ function processElements(elements: any[], lat: number, lng: number, geoData: any
   const diversityIndex = categories.size;
   const amenitiesCount = amenitiesList.length; 
 
+  // England & Wales: use VOA LSOA lookup (E01/W01 codes from postcodes.io)
   const lsoaCode = geoData.result.codes?.lsoa || geoData.result.codes?.lsoa21 || null;
   const voaBand = lsoaCode ? lsoaBandLookup[lsoaCode] || null : null;
 
+  // Scotland: VOA doesn't cover Scotland (SAA jurisdiction). Use modal band per Scottish
+  // council area (S12000xxx code) derived from NRS Dwellings by Council Tax Band data.
+  const isScotlandPostcode = geoData.result.country === 'Scotland';
+  const scotCouncilCode = geoData.result.codes?.admin_district || null;
+  const scotBand = !voaBand && isScotlandPostcode && scotCouncilCode
+    ? scotlandCouncilBandLookup[scotCouncilCode] || null
+    : null;
+
+  // Crude outcode heuristic for NI and any genuinely unmatched postcodes
   const getEstimatedBand = (outcode: string) => {
-    const highValuePrefixes = ['SW', 'W', 'NW', 'EC', 'WC', 'SE1', 'E1W'];
+    const highValuePrefixes = ['SW', 'W1', 'NW', 'EC', 'WC', 'SE1', 'E1W'];
     if (highValuePrefixes.some(pref => outcode.startsWith(pref))) return 'G';
-    if (['N', 'E', 'S', 'W'].some(pref => outcode.startsWith(pref))) return 'E';
+    if (['N1', 'E1', 'SE', 'W2', 'W8', 'W11'].some(pref => outcode.startsWith(pref))) return 'E';
     const affluentPrefixes = ['OX', 'GU', 'RG', 'SL', 'HP', 'AL', 'SG'];
     if (affluentPrefixes.some(pref => outcode.startsWith(pref))) return 'D';
     return 'C';
   };
 
-  const councilTaxBand = voaBand || getEstimatedBand(geoData.result.outcode);
-  const councilTaxSource = voaBand ? "VOA (2024)" : "Estimated";
-  const councilTaxLink = geoData.result.country === 'Scotland' 
-    ? "https://www.saa.gov.uk/" 
+  const councilTaxBand = voaBand || scotBand || getEstimatedBand(geoData.result.outcode);
+  const councilTaxSource = voaBand
+    ? "VOA (2024)"
+    : scotBand
+    ? "SAA (council area, 2024)"
+    : "Estimated";
+  const councilTaxLink = isScotlandPostcode
+    ? "https://www.saa.gov.uk/"
     : "https://www.tax.service.gov.uk/check-council-tax-band/search";
 
   // Noise estimate (synchronous — uses elementsWithDistance from Overpass)

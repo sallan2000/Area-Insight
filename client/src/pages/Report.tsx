@@ -924,7 +924,8 @@ export default function Report() {
                         <span className="text-xs font-bold text-muted-foreground uppercase">Network</span>
                         <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G
                         Outdoor</span>
-                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G Indoor</span>
+                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G
+                        Indoor</span>
                       </div>
                       {raw.connectivity.mobile.map((op: any, i: number) => (
                         <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-x-2 items-center p-2 bg-gray-50 rounded-lg border border-border" data-testid={`mobile-op-${i}`}>

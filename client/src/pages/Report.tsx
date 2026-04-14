@@ -392,7 +392,6 @@ export default function Report() {
           </div>
         </DialogContent>
       </Dialog>
-      
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -437,7 +436,6 @@ export default function Report() {
           </div>
         </div>
       </header>
-
       <div ref={reportRef} className="bg-gray-50">
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           {/* Map Section */}
@@ -676,10 +674,10 @@ export default function Report() {
                               };
                               const icon = categoryIcons[category] || null;
                               return (
-                              <div key={category}>
-                                <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3 flex items-center gap-1.5">{icon}{category.replace(/_/g, ' ')}</h5>
-                                {renderAmenityList(items, category)}
-                              </div>
+                                <div key={category}>
+                                  <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3 flex items-center gap-1.5">{icon}{category.replace(/_/g, ' ')}</h5>
+                                  {renderAmenityList(items, category)}
+                                </div>
                               );
                             })}
                           </div>
@@ -924,7 +922,8 @@ export default function Report() {
                     <div className="space-y-2">
                       <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 mb-2 px-2">
                         <span className="text-xs font-bold text-muted-foreground uppercase">Network</span>
-                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G Outdoor</span>
+                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G
+                        Outdoor</span>
                         <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G Indoor</span>
                       </div>
                       {raw.connectivity.mobile.map((op: any, i: number) => (

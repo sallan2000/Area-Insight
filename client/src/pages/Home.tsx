@@ -79,7 +79,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
       <LoadingModal isOpen={isPending} completedSteps={completedSteps} />
       {/* Navigation */}
-      <nav className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
+      <nav className="w-full max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="bg-primary text-white p-2 rounded-lg">
             <MapPin className="h-5 w-5" />
@@ -87,17 +87,17 @@ export default function Home() {
           <span className="font-display font-bold text-xl tracking-tight">ScoreMyStreet</span>
         </div>
         <div className="flex items-center gap-4">
-          <a href="/compare" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <a href="/compare" className="hidden sm:inline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Compare Areas
           </a>
-          <a href="/how-it-works" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <a href="/how-it-works" className="hidden sm:inline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             How it works
           </a>
           <UserMenu />
         </div>
       </nav>
       {/* Hero Section */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 pb-20 relative overflow-hidden">
+      <main className="flex-1 flex flex-col items-center justify-center px-4 pb-12 sm:pb-20 relative overflow-hidden">
         {/* Abstract background blobs */}
         <div className="absolute top-1/4 -left-20 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
@@ -106,15 +106,15 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="max-w-3xl w-full text-center space-y-8 z-10"
+          className="max-w-3xl w-full text-center space-y-6 sm:space-y-8 z-10"
         >
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-border shadow-sm text-sm font-medium text-muted-foreground">
             <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
             Live UK Data Analysis
           </div>
           
-          <h1 className="sm:text-5xl md:text-7xl font-display font-bold text-foreground tracking-tight text-balance text-[69px]">
-            Discover the truth about <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600 text-[69px]">your next neighbourhood</span>
+          <h1 className="text-4xl sm:text-5xl md:text-[69px] font-display font-bold text-foreground tracking-tight text-balance">
+            Discover the truth about <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600 text-4xl sm:text-5xl md:text-[69px]">your next neighbourhood</span>
           </h1>
           
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
@@ -152,7 +152,7 @@ export default function Home() {
             </div>
           </motion.form>
 
-          <div className="pt-8 flex flex-wrap justify-center gap-8 text-sm text-muted-foreground">
+          <div className="pt-4 sm:pt-8 flex flex-wrap justify-center gap-4 sm:gap-8 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <div className="w-1 h-1 bg-muted-foreground rounded-full" />
               Police Data

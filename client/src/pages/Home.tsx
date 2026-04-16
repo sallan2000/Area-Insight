@@ -9,11 +9,13 @@ import { UserMenu } from "@/components/UserMenu";
 export default function Home() {
   const [postcode, setPostcode] = useState("");
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { mutate, isPending } = useCreateAssessment();
+  const { mutate } = useCreateAssessment();
   const { toast } = useToast();
 
-  const handleAssessment = (pc: string) => {
+  const handleAssessment = async (pc: string) => {
     const cleanPostcode = pc.trim().toUpperCase();
     const postcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$/i;
 
@@ -34,9 +36,36 @@ export default function Home() {
       });
       return;
     }
-    
+
+    // Validate the postcode exists before showing the modal
+    setIsValidating(true);
+    try {
+      const res = await fetch(
+        `https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPostcode)}`
+      );
+      if (!res.ok) {
+        toast({
+          title: "Postcode not found",
+          description: "The postcode you entered is not a recognised UK postcode. Please check for typos and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch {
+      toast({
+        title: "Validation failed",
+        description: "Unable to verify the postcode. Please check your connection and try again.",
+        variant: "destructive",
+      });
+      return;
+    } finally {
+      setIsValidating(false);
+    }
+
+    // Postcode is valid — show the modal and start the assessment
     setCompletedSteps([]);
-    
+    setShowModal(true);
+
     const steps = ["transport", "safety", "schools", "amenities"];
     steps.forEach((step, index) => {
       setTimeout(() => {
@@ -46,12 +75,11 @@ export default function Home() {
 
     mutate({ postcode: cleanPostcode }, {
       onError: (error: any) => {
+        setShowModal(false);
         setCompletedSteps([]);
         toast({
-          title: "Postcode lookup failed",
-          description: error.message.includes("Invalid postcode") 
-            ? "The postcode you entered is not a recognized UK postcode. Please check for typos and try again."
-            : error.message,
+          title: "Assessment failed",
+          description: error.message || "Something went wrong. Please try again.",
           variant: "destructive",
         });
       }
@@ -73,9 +101,11 @@ export default function Home() {
     handleAssessment(postcode);
   };
 
+  const isBusy = isValidating || showModal;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
-      <LoadingModal isOpen={isPending} completedSteps={completedSteps} />
+      <LoadingModal isOpen={showModal} completedSteps={completedSteps} />
 
       {/* Navigation */}
       <nav className="w-full max-w-7xl mx-auto px-6 py-5 flex justify-between items-center relative z-50">
@@ -87,7 +117,6 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Desktop links */}
           <a href="/compare" className="hidden sm:inline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Compare Areas
           </a>
@@ -95,7 +124,6 @@ export default function Home() {
             How it works
           </a>
           <UserMenu />
-          {/* Hamburger button — mobile only */}
           <button
             className="sm:hidden p-2 rounded-lg hover:bg-black/5 transition-colors"
             onClick={() => setMenuOpen(o => !o)}
@@ -139,7 +167,6 @@ export default function Home() {
 
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-12 sm:pb-20 relative overflow-hidden">
-        {/* Abstract background blobs */}
         <div className="absolute top-1/4 -left-20 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -179,17 +206,17 @@ export default function Home() {
                   className="flex-1 min-w-0 px-4 py-3 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/70 font-medium text-sm sm:text-base"
                   value={postcode}
                   onChange={(e) => setPostcode(e.target.value.toUpperCase())}
-                  disabled={isPending}
+                  disabled={isBusy}
                   data-testid="input-postcode"
                 />
               </div>
               <button 
                 type="submit" 
-                disabled={isPending}
+                disabled={isBusy}
                 className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
                 data-testid="button-analyse"
               >
-                <span>Analyse</span>
+                <span>{isValidating ? "Checking…" : "Analyse"}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>

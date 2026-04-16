@@ -19,7 +19,7 @@ export function UserMenu() {
   if (!isAuthenticated || !user) {
     return (
       <a href="/api/login" data-testid="button-login">
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2 border-0 sm:border shadow-none sm:shadow-sm">
           <LogIn className="h-4 w-4" />
           Log in
         </Button>

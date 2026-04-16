@@ -96,7 +96,6 @@ export default function Home() {
           <UserMenu />
         </div>
       </nav>
-
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-20 relative overflow-hidden">
         {/* Abstract background blobs */}
@@ -114,8 +113,8 @@ export default function Home() {
             Live UK Data Analysis
           </div>
           
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-bold text-foreground tracking-tight text-balance">
-            Discover the truth about <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600">your neighbourhood</span>
+          <h1 className="sm:text-5xl md:text-7xl font-display font-bold text-foreground tracking-tight text-balance text-[69px]">
+            Discover the truth about <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-600 text-[69px]">your next neighbourhood</span>
           </h1>
           
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto text-balance">
@@ -173,7 +172,6 @@ export default function Home() {
           </div>
         </motion.div>
       </main>
-
       {/* Decorative Footer */}
       <footer className="w-full py-6 text-center text-sm text-muted-foreground border-t border-border/50 bg-white/50 backdrop-blur-sm">
         <p>© 2025 ScoreMyStreet. Open Data powered.</p>

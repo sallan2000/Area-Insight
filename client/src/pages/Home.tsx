@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useCreateAssessment } from "@/hooks/use-assess";
-import { Search, MapPin, ArrowRight } from "lucide-react";
-import { motion } from "framer-motion";
+import { Search, MapPin, ArrowRight, Menu, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { LoadingModal } from "@/components/LoadingModal";
 import { UserMenu } from "@/components/UserMenu";
@@ -9,6 +9,7 @@ import { UserMenu } from "@/components/UserMenu";
 export default function Home() {
   const [postcode, setPostcode] = useState("");
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { mutate, isPending } = useCreateAssessment();
   const { toast } = useToast();
 
@@ -36,7 +37,6 @@ export default function Home() {
     
     setCompletedSteps([]);
     
-    // Simulate progress for UX
     const steps = ["transport", "safety", "schools", "amenities"];
     steps.forEach((step, index) => {
       setTimeout(() => {
@@ -58,14 +58,12 @@ export default function Home() {
     });
   };
 
-  // Handle automatic search from URL params (for nearest postcodes)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pc = params.get('postcode');
     if (pc) {
       setPostcode(pc);
       handleAssessment(pc);
-      // Clean up URL params after search
       window.history.replaceState({}, '', '/');
     }
   }, []);
@@ -78,15 +76,18 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
       <LoadingModal isOpen={isPending} completedSteps={completedSteps} />
+
       {/* Navigation */}
-      <nav className="w-full max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
+      <nav className="w-full max-w-7xl mx-auto px-6 py-5 flex justify-between items-center relative z-50">
         <div className="flex items-center gap-2">
           <div className="bg-primary text-white p-2 rounded-lg">
             <MapPin className="h-5 w-5" />
           </div>
           <span className="font-display font-bold text-xl tracking-tight">ScoreMyStreet</span>
         </div>
+
         <div className="flex items-center gap-4">
+          {/* Desktop links */}
           <a href="/compare" className="hidden sm:inline text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Compare Areas
           </a>
@@ -94,8 +95,48 @@ export default function Home() {
             How it works
           </a>
           <UserMenu />
+          {/* Hamburger button — mobile only */}
+          <button
+            className="sm:hidden p-2 rounded-lg hover:bg-black/5 transition-colors"
+            onClick={() => setMenuOpen(o => !o)}
+            aria-label="Toggle menu"
+            data-testid="button-mobile-menu"
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
       </nav>
+
+      {/* Mobile dropdown menu */}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="sm:hidden relative z-40 mx-4 mb-2 rounded-2xl bg-white border border-border shadow-lg overflow-hidden"
+          >
+            <a
+              href="/compare"
+              className="flex items-center px-5 py-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors border-b border-border/50"
+              onClick={() => setMenuOpen(false)}
+              data-testid="link-mobile-compare"
+            >
+              Compare Areas
+            </a>
+            <a
+              href="/how-it-works"
+              className="flex items-center px-5 py-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+              onClick={() => setMenuOpen(false)}
+              data-testid="link-mobile-how-it-works"
+            >
+              How it works
+            </a>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-12 sm:pb-20 relative overflow-hidden">
         {/* Abstract background blobs */}
@@ -139,12 +180,14 @@ export default function Home() {
                   value={postcode}
                   onChange={(e) => setPostcode(e.target.value.toUpperCase())}
                   disabled={isPending}
+                  data-testid="input-postcode"
                 />
               </div>
               <button 
                 type="submit" 
                 disabled={isPending}
                 className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+                data-testid="button-analyse"
               >
                 <span>Analyse</span>
                 <ArrowRight className="h-4 w-4" />
@@ -172,7 +215,8 @@ export default function Home() {
           </div>
         </motion.div>
       </main>
-      {/* Decorative Footer */}
+
+      {/* Footer */}
       <footer className="w-full py-6 text-center text-sm text-muted-foreground border-t border-border/50 bg-white/50 backdrop-blur-sm">
         <p>© 2025 ScoreMyStreet. Open Data powered.</p>
       </footer>

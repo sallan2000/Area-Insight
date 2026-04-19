@@ -11,7 +11,7 @@ import {
 import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
-  createAssessment(assessment: InsertAssessment): Promise<Assessment>;
+  createAssessment(assessment: InsertAssessment, existingId?: number): Promise<Assessment>;
   getAssessment(id: number): Promise<Assessment | undefined>;
   getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined>;
   recordUserSearch(userId: string, assessmentId: number): Promise<void>;
@@ -21,11 +21,8 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async createAssessment(insertAssessment: InsertAssessment): Promise<Assessment> {
-    const cleanPostcode = insertAssessment.postcode.toUpperCase();
-    const existing = await this.getAssessmentByPostcode(cleanPostcode);
-    
-    if (existing) {
+  async createAssessment(insertAssessment: InsertAssessment, existingId?: number): Promise<Assessment> {
+    if (existingId !== undefined) {
       const [updated] = await db
         .update(assessments)
         .set({
@@ -35,7 +32,7 @@ export class DatabaseStorage implements IStorage {
           scores: insertAssessment.scores,
           lastSearchedAt: new Date(),
         })
-        .where(eq(assessments.id, existing.id))
+        .where(eq(assessments.id, existingId))
         .returning();
       return updated;
     }

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, jsonb, timestamp, varchar, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, jsonb, timestamp, varchar, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -16,14 +16,18 @@ export const assessments = pgTable("assessments", {
   userId: varchar("user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   lastSearchedAt: timestamp("last_searched_at").defaultNow(),
-});
+}, (table) => [
+  index("assessments_postcode_idx").on(table.postcode),
+]);
 
 export const userSearches = pgTable("user_searches", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
   assessmentId: integer("assessment_id").notNull().references(() => assessments.id),
   searchedAt: timestamp("searched_at").defaultNow(),
-});
+}, (table) => [
+  index("user_searches_user_id_idx").on(table.userId),
+]);
 
 export const insertAssessmentSchema = createInsertSchema(assessments).extend({
   postcode: z.string().regex(postcodeRegex, "Please enter a valid UK postcode (e.g., SW1A 1AA)")

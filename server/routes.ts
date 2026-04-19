@@ -75,7 +75,34 @@ const daqiBands = (pm25: number, pm10: number, no2: number, o3: number) => {
   return Math.max(pm25Index, pm10Index, no2Index, o3Index);
 };
 
-function processElements(elements: any[], lat: number, lng: number, geoData: any, crimesData: any[], crimeCount: number, crimeTrend: string, severityScore: number, street: string, city: string, violentCrimes: number, burglaryCrimes: number, asbCrimes: number, vehicleCrimes: number, drugCrimes: number, nearestPostcodes: string[], streetName: string, neighbourhoodInfo: any, prefetchedAirQuality: any, floodRisk: any, mobile: any[], broadband: any[], evChargers: any[]) {
+interface ProcessElementsInput {
+  elements: any[];
+  lat: number;
+  lng: number;
+  geoData: any;
+  crimesData: any[];
+  crimeCount: number;
+  crimeTrend: string;
+  severityScore: number;
+  street: string;
+  city: string;
+  violentCrimes: number;
+  burglaryCrimes: number;
+  asbCrimes: number;
+  vehicleCrimes: number;
+  drugCrimes: number;
+  nearestPostcodes: string[];
+  streetName: string;
+  neighbourhoodInfo: any;
+  prefetchedAirQuality: any;
+  floodRisk: any;
+  mobile: any[];
+  broadband: any[];
+  evChargers: any[];
+}
+
+function processElements(input: ProcessElementsInput) {
+  const { elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -783,13 +810,13 @@ async function fetchAreaMetrics(postcode: string) {
   console.log(`Safety normalisation: ${geoData.result.postcode} | raw=${rawCrimeCount} normalised=${crimeCount} | area=${effectiveCoverageArea.toFixed(2)}km² factor=${areaNormalisationFactor.toFixed(4)} | severity=${severityScore.toFixed(0)}`);
   console.log(`fetchAreaMetrics: ${geoData.result.postcode} completed in ${Date.now() - t0}ms`);
 
-  return processElements(
+  return processElements({
     elements, lat, lng, geoData,
     crimesData, crimeCount, crimeTrend, severityScore,
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
     prefetchedAirQuality, floodRisk, mobile, broadband, evChargers
-  );
+  });
 }
 
 // Scoring Logic
@@ -852,10 +879,10 @@ export async function registerRoutes(
         const isFresh = (Date.now() - lastSearchedAt) < thirtyDaysInMs;
 
         if (isFresh) {
-          await storage.updateLastSearchedAt(cached.id);
-          if (userId) {
-            await storage.recordUserSearch(userId, cached.id);
-          }
+          await Promise.all([
+            storage.updateLastSearchedAt(cached.id),
+            userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
+          ]);
           return res.status(200).json(cached);
         }
       }
@@ -868,7 +895,7 @@ export async function registerRoutes(
         lng: data.lng,
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
         scores: scores
-      });
+      }, cached?.id);
       if (userId) {
         await storage.recordUserSearch(userId, assessment.id);
       }

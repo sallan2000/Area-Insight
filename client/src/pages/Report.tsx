@@ -15,19 +15,11 @@ import {
   Check,
   Receipt,
   ArrowRight,
-  Wifi,
-  Signal,
   Download,
-  Wind,
-  Volume2,
-  Waves,
   ShoppingCart,
   ShoppingBag,
   Building2,
-  Zap
 } from "lucide-react";
-import { toPng } from 'html-to-image';
-import { jsPDF } from 'jspdf';
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
@@ -47,26 +39,10 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { UserMenu } from "@/components/UserMenu";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  Cell
-} from 'recharts';
+import { EnvironmentSection } from "@/components/report/EnvironmentSection";
+import { ConnectivitySection } from "@/components/report/ConnectivitySection";
+import { EvChargersSection } from "@/components/report/EvChargersSection";
 
-// Mock data for charts since real historical API might be limited
-const trendData = [
-  { name: 'Jan', value: 65 },
-  { name: 'Feb', value: 59 },
-  { name: 'Mar', value: 80 },
-  { name: 'Apr', value: 81 },
-  { name: 'May', value: 56 },
-  { name: 'Jun', value: 55 },
-];
 
 export default function Report() {
   const { id } = useParams();
@@ -148,12 +124,10 @@ export default function Report() {
   const exportAsImage = async () => {
     if (!reportRef.current || !report) return;
     try {
-      // toPng struggles with iframes. We hide them during export and show a placeholder or just accept the blank space.
-      // Better yet, we can try to use static map images for exports in the future.
+      const { toPng } = await import('html-to-image');
       const dataUrl = await toPng(reportRef.current, { 
         cacheBust: true,
         backgroundColor: '#f9fafb',
-        // Filter out iframes from the export as they cause issues and often appear blank
         filter: (node) => node.tagName !== 'IFRAME'
       });
       const link = document.createElement('a');
@@ -170,6 +144,10 @@ export default function Report() {
   const exportAsPDF = async () => {
     if (!reportRef.current || !report) return;
     try {
+      const [{ toPng }, { jsPDF }] = await Promise.all([
+        import('html-to-image'),
+        import('jspdf'),
+      ]);
       const dataUrl = await toPng(reportRef.current, { 
         cacheBust: true,
         backgroundColor: '#f9fafb',
@@ -692,323 +670,16 @@ export default function Report() {
 
           {/* Environment Section */}
           {raw.environment && (
-            <section className="space-y-6">
-              <h3 className="text-xl font-display font-bold px-1" data-testid="heading-environmental">Environmental Quality</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-white border-border shadow-sm" data-testid="card-air-quality">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
-                        <Wind className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold">Air Quality</h4>
-                        <p className="text-sm text-muted-foreground">UK DAQI (1–10 scale)</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-white font-bold text-lg ${
-                          raw.environment.airQuality.index <= 3 ? 'bg-green-500' :
-                          raw.environment.airQuality.index <= 6 ? 'bg-yellow-500' :
-                          raw.environment.airQuality.index <= 9 ? 'bg-orange-500' : 'bg-red-600'
-                        }`} data-testid="text-air-quality-index">
-                          {raw.environment.airQuality.index}
-                        </span>
-                        <span className={`text-lg font-bold ${
-                          raw.environment.airQuality.index <= 3 ? 'text-green-700' :
-                          raw.environment.airQuality.index <= 6 ? 'text-yellow-700' :
-                          raw.environment.airQuality.index <= 9 ? 'text-orange-700' : 'text-red-700'
-                        }`} data-testid="text-air-quality-level">
-                          {raw.environment.airQuality.level}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground leading-snug">{raw.environment.airQuality.description}</p>
-
-                      {raw.environment.airQuality.source && (
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          Source: {raw.environment.airQuality.source}
-                        </p>
-                      )}
-
-                      {raw.environment.airQuality.pollutants?.length > 0 && (
-                        <div className="pt-3 grid grid-cols-3 gap-1.5">
-                          {raw.environment.airQuality.pollutants.slice(0, 6).map((p: any, i: number) => (
-                            <div key={i} className="bg-gray-50 p-1.5 rounded-lg border border-border text-center" data-testid={`text-pollutant-${i}`}>
-                              <p className="text-[9px] text-muted-foreground font-bold">{p.name}</p>
-                              <p className="text-[11px] font-bold text-foreground">{typeof p.value === 'number' ? p.value.toFixed(1) : p.value}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white border-border shadow-sm" data-testid="card-noise">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className={`p-3 rounded-xl ${
-                        raw.environment.noise.level === 'Quiet' ? 'bg-green-50 text-green-600' :
-                        raw.environment.noise.level === 'Moderate' ? 'bg-orange-50 text-orange-600' :
-                        'bg-red-50 text-red-600'
-                      }`}>
-                        <Volume2 className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold">Noise Exposure</h4>
-                        <p className="text-sm text-muted-foreground">Estimated ambient levels</p>
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      <div className={`p-3 rounded-xl text-center border ${
-                        raw.environment.noise.level === 'Quiet' ? 'bg-green-50/50 border-green-100' :
-                        raw.environment.noise.level === 'Moderate' ? 'bg-orange-50/50 border-orange-100' :
-                        raw.environment.noise.level === 'Loud' ? 'bg-red-50/50 border-red-100' :
-                        'bg-red-100/50 border-red-200'
-                      }`}>
-                        <p className={`text-2xl font-bold ${
-                          raw.environment.noise.level === 'Quiet' ? 'text-green-700' :
-                          raw.environment.noise.level === 'Moderate' ? 'text-orange-700' : 'text-red-700'
-                        }`} data-testid="text-noise-level">
-                          {raw.environment.noise.level}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="text-center">
-                          <p className="text-[10px] text-muted-foreground uppercase font-bold">Daytime</p>
-                          <p className="text-sm font-bold" data-testid="text-noise-day">{raw.environment.noise.day} dB</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] text-muted-foreground uppercase font-bold">Nighttime</p>
-                          <p className="text-sm font-bold" data-testid="text-noise-night">{raw.environment.noise.night} dB</p>
-                        </div>
-                      </div>
-                      {raw.environment.noise.sources?.length > 0 && (
-                        <div className="pt-2 border-t border-border space-y-1">
-                          <p className="text-[10px] text-muted-foreground uppercase font-bold">Contributing sources</p>
-                          {raw.environment.noise.sources.map((s: string, i: number) => (
-                            <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5" data-testid={`text-noise-source-${i}`}>
-                              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                              {s}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-white border-border shadow-sm" data-testid="card-flood-risk">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className={`p-3 rounded-xl ${
-                        raw.environment.floodRisk.likelihood === 'Very Low' ? 'bg-emerald-50 text-emerald-600' :
-                        raw.environment.floodRisk.likelihood === 'Low' ? 'bg-green-50 text-green-600' :
-                        raw.environment.floodRisk.likelihood === 'Medium' ? 'bg-yellow-50 text-yellow-600' :
-                        'bg-red-50 text-red-600'
-                      }`}>
-                        <Waves className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold">Flood Risk</h4>
-                        <p className="text-sm text-muted-foreground">Environment Agency data</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <p className={`text-2xl font-bold ${
-                        raw.environment.floodRisk.likelihood === 'Very Low' ? 'text-emerald-700' :
-                        raw.environment.floodRisk.likelihood === 'Low' ? 'text-green-700' :
-                        raw.environment.floodRisk.likelihood === 'Medium' ? 'text-yellow-700' : 'text-red-700'
-                      }`} data-testid="text-flood-likelihood">
-                        {raw.environment.floodRisk.likelihood}
-                      </p>
-                      <p className="text-sm text-muted-foreground leading-snug">{raw.environment.floodRisk.description}</p>
-
-                      {raw.environment.floodRisk.station && (
-                        <div className="mt-3 pt-3 border-t border-border space-y-1.5">
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-muted-foreground">Nearest station</span>
-                            <span className="font-medium text-foreground" data-testid="text-flood-station">{raw.environment.floodRisk.station.name}</span>
-                          </div>
-                          {raw.environment.floodRisk.station.river && (
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-muted-foreground">River</span>
-                              <span className="font-medium text-foreground" data-testid="text-flood-river">{raw.environment.floodRisk.station.river}</span>
-                            </div>
-                          )}
-                          {raw.environment.floodRisk.station.distance != null && (
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-muted-foreground">Distance</span>
-                              <span className="font-medium text-foreground">{(raw.environment.floodRisk.station.distance * 1000).toFixed(0)}m</span>
-                            </div>
-                          )}
-                          {raw.environment.floodRisk.station.latestReading && (
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-muted-foreground">Latest reading</span>
-                              <span className="font-medium text-foreground" data-testid="text-flood-level">{raw.environment.floodRisk.station.latestReading.value} m</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {raw.environment.floodRisk.activeAlerts > 0 && (
-                        <div className="mt-2 px-2 py-1.5 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-xs font-bold text-yellow-800" data-testid="text-flood-alerts">
-                            ⚠ {raw.environment.floodRisk.activeAlerts} active alert{raw.environment.floodRisk.activeAlerts > 1 ? 's' : ''} within 5km
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </section>
+            <EnvironmentSection environment={raw.environment} />
           )}
 
-          {/* Connectivity Section */}
-          <section className="space-y-6">
-            <h3 className="text-xl font-display font-bold px-1">Digital Connectivity</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-white border-border shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
-                      <Wifi className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold">Broadband Availability</h4>
-                      <p className="text-sm text-muted-foreground">Predicted speeds by tier</p>
-                    </div>
-                  </div>
-                  {Array.isArray(raw.connectivity?.broadband) && raw.connectivity.broadband.length > 0 ? (
-                    <div className="space-y-3">
-                      {raw.connectivity.broadband.map((b: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                          <div>
-                            <p className="text-sm font-bold text-foreground">{b.type}</p>
-                            {b.available ? (
-                              <p className="text-xs text-muted-foreground">
-                                ↓ {Math.round(b.maxDownMbps)} Mbps &nbsp;·&nbsp; ↑ {Math.round(b.maxUpMbps)} Mbps
-                              </p>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">Not available at this postcode</p>
-                            )}
-                          </div>
-                          <span className={`text-xs font-bold px-2 py-1 rounded-md ${b.available ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {b.available ? 'Available' : 'Not available'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">No broadband data available</p>
-                  )}
-                </CardContent>
-              </Card>
+          {raw.connectivity && (
+            <ConnectivitySection connectivity={raw.connectivity} />
+          )}
 
-              <Card className="bg-white border-border shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
-                      <Signal className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold">Mobile Coverage</h4>
-                      <p className="text-sm text-muted-foreground">Per-operator 4G indoor & outdoor</p>
-                    </div>
-                  </div>
-                  {Array.isArray(raw.connectivity?.mobile) && raw.connectivity.mobile.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-[1fr_auto_auto] gap-x-2 mb-2 px-2">
-                        <span className="text-xs font-bold text-muted-foreground uppercase">Network</span>
-                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G
-                        Outdoor</span>
-                        <span className="text-xs font-bold text-muted-foreground uppercase text-center w-20">4G
-                        Indoor</span>
-                      </div>
-                      {raw.connectivity.mobile.map((op: any, i: number) => (
-                        <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-x-2 items-center p-2 bg-gray-50 rounded-lg border border-border" data-testid={`mobile-op-${i}`}>
-                          <span className="text-sm font-bold text-foreground">{op.name}</span>
-                          {[op.data4GOutdoor, op.data4GIndoor].map((val: boolean, j: number) => (
-                            <span key={j} className={`w-20 text-center text-base ${val ? 'text-emerald-500' : 'text-gray-300'}`}>
-                              {val ? '✓' : '✗'}
-                            </span>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  ) : raw.connectivity?.mobile?.fourG ? (
-                    <div className="p-4 bg-gray-50 rounded-xl border border-border text-center">
-                      <p className="text-xs font-bold text-muted-foreground uppercase mb-2">4G Coverage</p>
-                      <p className="text-xl font-bold text-emerald-600">{raw.connectivity.mobile.fourG}</p>
-                    </div>
-                  ) : (
-                    <div className="p-6 bg-gray-50 rounded-xl border border-border text-center" data-testid="mobile-no-data">
-                      <p className="text-sm text-muted-foreground">No data available</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </section>
-
-          {/* EV Charging Section */}
-          <section className="space-y-6" data-testid="section-ev-charging">
-            <h3 className="text-xl font-display font-bold px-1">EV Charging</h3>
-            <Card className="bg-white border-border shadow-sm">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="p-3 bg-yellow-50 rounded-xl text-yellow-600">
-                    <Zap className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold">Nearest Charge Points</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {raw.evChargers?.length ? `${raw.evChargers.length} charger${raw.evChargers.length !== 1 ? 's' : ''} within 10 km` : 'Charge point availability'}
-                    </p>
-                  </div>
-                </div>
-                {raw.evChargers && raw.evChargers.length > 0 ? (
-                  <div className="space-y-4">
-                    {raw.evChargers.map((charger: any, i: number) => (
-                      <div key={i} className="p-4 bg-gray-50 rounded-xl border border-border" data-testid={`ev-charger-${i}`}>
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-foreground truncate">{charger.name}</p>
-                            <p className="text-xs text-muted-foreground">{charger.operator}{charger.town ? ` · ${charger.town}` : ''}</p>
-                          </div>
-                          <div className="flex items-center gap-2 ml-3 shrink-0">
-                            {charger.usageCost && (
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                                charger.usageCost.toLowerCase().includes('free') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'
-                              }`} data-testid={`ev-charger-cost-${i}`}>
-                                {charger.usageCost.toLowerCase().includes('free') ? 'Free' : 'Paid'}
-                              </span>
-                            )}
-                            <span className="text-xs font-bold text-primary" data-testid={`ev-charger-distance-${i}`}>
-                              {charger.distance != null ? (charger.distance < 1 ? `${Math.round(charger.distance * 1000)}m` : `${charger.distance.toFixed(1)} km`) : '—'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {charger.connections?.map((conn: any, j: number) => (
-                            <span key={j} className="text-[10px] font-medium px-2 py-0.5 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-md" data-testid={`ev-charger-conn-${i}-${j}`}>
-                              {conn.type}{conn.powerKW ? ` · ${conn.powerKW} kW` : ''}{conn.quantity > 1 ? ` · ${conn.quantity} pts` : ''}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-6 bg-gray-50 rounded-xl border border-border text-center" data-testid="ev-charger-no-data">
-                    <p className="text-sm text-muted-foreground">No data available</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
+          {raw.evChargers && (
+            <EvChargersSection evChargers={raw.evChargers} />
+          )}
 
           {/* Nearest Neighbourhoods */}
           {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (

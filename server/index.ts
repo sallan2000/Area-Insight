@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -34,6 +35,18 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+// Security headers — apply to all routes in production, only /api in dev
+const helmetMiddleware = helmet({
+  contentSecurityPolicy: false,
+});
+
+if (process.env.NODE_ENV === "production") {
+  app.use(helmetMiddleware);
+} else {
+  app.use("/api", helmetMiddleware);
+}
+
+// Request/response logger — sanitises auth endpoints and truncates long bodies
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -49,8 +62,9 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (capturedJsonResponse && !path.startsWith("/api/auth")) {
+        const bodyStr = JSON.stringify(capturedJsonResponse);
+        logLine += ` :: ${bodyStr.length > 200 ? bodyStr.slice(0, 200) + "…" : bodyStr}`;
       }
 
       log(logLine);

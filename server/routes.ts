@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
+import { assessRateLimit, shareRateLimit } from "./rateLimits";
 import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -861,7 +862,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  app.post(api.assess.create.path, async (req, res) => {
+  app.post(api.assess.create.path, assessRateLimit, async (req, res) => {
     try {
       const { postcode } = api.assess.create.input.parse(req.body);
       const cleanPostcode = postcode.trim().toUpperCase();
@@ -954,7 +955,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/share", async (req, res) => {
+  app.post("/api/share", shareRateLimit, async (req, res) => {
     try {
       const data = insertShareRequestSchema.parse(req.body);
       const shareRequest = await storage.createShareRequest(data);

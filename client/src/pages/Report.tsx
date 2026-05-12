@@ -19,6 +19,7 @@ import {
   ShoppingCart,
   ShoppingBag,
   Building2,
+  RefreshCw,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,17 +38,21 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { UserMenu } from "@/components/UserMenu";
 import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
+import { useAuth } from "@/hooks/use-auth";
+import { api } from "@shared/routes";
 
 
 export default function Report() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { data: report, isLoading, error } = useAssessment(Number(id));
+  const { isAuthenticated } = useAuth();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
 
   // Set initial active tab based on scores and crime count
@@ -112,6 +117,24 @@ export default function Report() {
       </div>
     );
   };
+  const handleRefresh = async () => {
+    if (!report) return;
+    setIsRefreshing(true);
+    try {
+      const res = await apiRequest("POST", `/api/assess/${id}/refresh`, {});
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Refresh failed");
+      }
+      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, Number(id)] });
+      toast({ title: "Report refreshed!", description: "Latest data has been fetched for this area." });
+    } catch (err: any) {
+      toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -406,6 +429,19 @@ export default function Report() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {(report.partialData || (isAuthenticated && report.lastSearchedAt && (Date.now() - new Date(report.lastSearchedAt).getTime()) > 24 * 60 * 60 * 1000)) && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                data-testid="button-refresh-report"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                {isRefreshing ? "Refreshing..." : "Refresh data"}
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareModalOpen(true)}>
               <Share2 className="w-4 h-4" />
               Share & Export
@@ -502,10 +538,11 @@ export default function Report() {
                   title="Transport"
                   score={scores.transport}
                   icon={<Bus className="w-6 h-6" />}
-                  description={`${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
+                  description={raw.overpassFailed ? "Map data temporarily unavailable" : `${raw.transport?.busStopCount || 0} bus stops & ${raw.transport?.stationCount || 0} stations nearby`}
                   status={getOverallGrade(scores.transport)}
                   isActive={activeTab === 'transport'}
                   onClick={() => setActiveTab('transport')}
+                  overpassFailed={raw.overpassFailed}
                 />
                 <MetricCard
                   title="Safety"
@@ -522,19 +559,21 @@ export default function Report() {
                   title="Schools"
                   score={scores.schools}
                   icon={<GraduationCap className="w-6 h-6" />}
-                  description={`${raw.schools?.count || 0} schools nearby`}
+                  description={raw.overpassFailed ? "Map data temporarily unavailable" : `${raw.schools?.count || 0} schools nearby`}
                   status={getOverallGrade(scores.schools)}
                   isActive={activeTab === 'schools'}
                   onClick={() => setActiveTab('schools')}
+                  overpassFailed={raw.overpassFailed}
                 />
                 <MetricCard
                   title="Amenities"
                   score={scores.amenities}
                   icon={<Store className="w-6 h-6" />}
-                  description={`${raw.amenities?.totalCount || 0} shops, eateries, and local services`}
+                  description={raw.overpassFailed ? "Map data temporarily unavailable" : `${raw.amenities?.totalCount || 0} shops, eateries, and local services`}
                   status={getOverallGrade(scores.amenities)}
                   isActive={activeTab === 'amenities'}
                   onClick={() => setActiveTab('amenities')}
+                  overpassFailed={raw.overpassFailed}
                 />
               </div>
             </div>
@@ -625,6 +664,12 @@ export default function Report() {
                         )}
                         {activeTab === 'transport' && (
                           <div className="space-y-6">
+                            {raw.overpassFailed && (
+                              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2" data-testid="notice-overpass-failed-transport">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-700">Map data temporarily unavailable — scores may be lower than usual. Try refreshing the report later.</p>
+                              </div>
+                            )}
                             <div>
                               <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Stations</h5>
                               {renderAmenityList(raw.transport?.stations || [], 'station')}
@@ -637,6 +682,12 @@ export default function Report() {
                         )}
                         {activeTab === 'schools' && (
                           <div className="space-y-6">
+                            {raw.overpassFailed && (
+                              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2" data-testid="notice-overpass-failed-schools">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-700">Map data temporarily unavailable — scores may be lower than usual. Try refreshing the report later.</p>
+                              </div>
+                            )}
                             <div>
                               <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Primary & Nursery</h5>
                               {renderAmenityList(raw.schools?.primaryList || [], 'primary_school')}
@@ -649,6 +700,12 @@ export default function Report() {
                         )}
                         {activeTab === 'amenities' && (
                           <div className="space-y-6">
+                            {raw.overpassFailed && (
+                              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2" data-testid="notice-overpass-failed-amenities">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-700">Map data temporarily unavailable — scores may be lower than usual. Try refreshing the report later.</p>
+                              </div>
+                            )}
                             {Object.entries(
                               (raw.amenities?.list || []).reduce((acc: any, item: any) => {
                                 const cat = item.category || 'other';

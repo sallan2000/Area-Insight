@@ -410,6 +410,7 @@ async function fetchAreaMetrics(postcode: string) {
     throw new Error("Invalid postcode");
   }
   const geoData = await geoRes.json();
+  console.log(`[timing] geocode phase: ${Date.now() - t0}ms`);
 
   const lat = geoData.result.latitude;
   const lng = geoData.result.longitude;
@@ -455,6 +456,7 @@ async function fetchAreaMetrics(postcode: string) {
   // Mirrors that return the Overpass server-timeout remark ("runtime error … exceeded")
   // or return empty elements are rejected so the race continues to other mirrors.
   const fetchFromOverpass = async (): Promise<any[]> => {
+    const tOverpass = Date.now();
     const tryMirror = async (endpoint: string): Promise<any[]> => {
       const res = await fetch(endpoint, {
         method: "POST",
@@ -486,39 +488,53 @@ async function fetchAreaMetrics(postcode: string) {
     };
 
     try {
-      return await Promise.any(
+      const result = await Promise.any(
         overpassEndpoints.map(ep =>
           tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
         )
       );
+      console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (${result.length} elements)`);
+      return result;
     } catch {
       // All mirrors failed — return empty so the rest of the assessment still proceeds
       // (safety/environment/connectivity scores will still be calculated correctly)
+      console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (all mirrors failed)`);
       return [];
     }
   };
 
-  // 2b. Crime — neighbourhood lookup (sequential, must precede monthly batch) then 12 months in parallel
-  //     crimes-no-location removed: those crimes have no geographic coordinates and don't improve local accuracy
+  // 2b. Crime — monthly fetches and neighbourhood lookup run concurrently.
+  //     The 12 street-crime requests only need lat/lng, so they start immediately.
+  //     locate-neighbourhood → neighbourhood runs in parallel; a 5 s timeout on the
+  //     first leg means a failed/slow police API short-circuits without blocking crimes.
+  //     crimes-no-location removed: those crimes have no geographic coordinates and
+  //     don't improve local accuracy.
   const fetchCrimeData = async (): Promise<{ allMonthsCrimes: any[][], neighbourhoodInfo: any, lastDateStr: string }> => {
-    let neighbourhoodInfo: any = null;
-    try {
-      const locateRes = await fetch(
-        `https://data.police.uk/api/locate-neighbourhood?q=${lat},${lng}`,
-        { signal: AbortSignal.timeout(10000) }
-      );
-      if (locateRes.ok) {
+    const tCrime = Date.now();
+
+    // Neighbourhood lookup — two sequential steps, but with a short outer timeout so a
+    // slow or missing police force doesn't delay the entire crime phase.
+    const neighbourhoodTask = (async (): Promise<any> => {
+      try {
+        const locateRes = await fetch(
+          `https://data.police.uk/api/locate-neighbourhood?q=${lat},${lng}`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (!locateRes.ok) return null;
         const locateData = await locateRes.json();
+        if (!locateData?.force || !locateData?.neighbourhood) return null;
         const hoodRes = await fetch(
           `https://data.police.uk/api/${locateData.force}/${locateData.neighbourhood}`,
-          { signal: AbortSignal.timeout(10000) }
+          { signal: AbortSignal.timeout(5000) }
         );
-        if (hoodRes.ok) neighbourhoodInfo = await hoodRes.json();
+        return hoodRes.ok ? await hoodRes.json() : null;
+      } catch (e) {
+        console.error("Neighbourhood locate failed:", e);
+        return null;
       }
-    } catch (e) {
-      console.error("Neighbourhood locate failed:", e);
-    }
+    })();
 
+    // 12 monthly crime fetches — all start immediately in parallel
     const today = new Date();
     let lastDateStr = "";
     const monthPromises = Array.from({ length: 12 }, (_, idx) => {
@@ -549,12 +565,18 @@ async function fetchAreaMetrics(postcode: string) {
       })();
     });
 
-    const allMonthsCrimes = await Promise.all(monthPromises);
+    const [allMonthsCrimes, neighbourhoodInfo] = await Promise.all([
+      Promise.all(monthPromises),
+      neighbourhoodTask
+    ]);
+
+    console.log(`[timing] crime phase: ${Date.now() - tCrime}ms`);
     return { allMonthsCrimes, neighbourhoodInfo, lastDateStr };
   };
 
   // 2c. Air quality (DEFRA) — returns real data or null; heuristic fallback applied later in processElements
   const getAirQualityFromDefra = async (): Promise<any | null> => {
+    const tAq = Date.now();
     try {
       const res = await fetch(`https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations?near=${lat},${lng}&limit=1`, {
         headers: { 'Accept': 'application/json' },
@@ -587,6 +609,7 @@ async function fetchAreaMetrics(postcode: string) {
             const no2 = pollutantMap["NO₂"] || 0, o3 = pollutantMap["O₃"] || 0;
             if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
               const daqi = daqiBands(pm25, pm10, no2, o3);
+              console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (real data)`);
               return {
                 index: daqi, level: daqiLevel(daqi), description: daqiDesc(daqi),
                 pollutants: Object.entries(pollutantMap).map(([name, value]) => ({ name, value: Math.round(value * 10) / 10, unit: "μg/m³" })),
@@ -598,11 +621,13 @@ async function fetchAreaMetrics(postcode: string) {
         }
       }
     } catch (e) { console.error("DEFRA UK-AIR fetch failed:", e); }
+    console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (no real data)`);
     return null;
   };
 
   // 2d. Flood risk (Environment Agency)
   const getFloodRisk = async (): Promise<any> => {
+    const tFlood = Date.now();
     try {
       const [alertsRes, stationsRes] = await Promise.all([
         fetch(`https://environment.data.gov.uk/flood-monitoring/id/floods?lat=${lat}&long=${lng}&dist=5`, { signal: AbortSignal.timeout(8000) }),
@@ -649,11 +674,13 @@ async function fetchAreaMetrics(postcode: string) {
         activeAlerts: alertCount, source: "Environment Agency"
       };
     } catch (e) { console.error("Flood risk fetch failed:", e); }
+    console.log(`[timing] flood phase: ${Date.now() - tFlood}ms (fallback)`);
     return { likelihood: "Very Low", suitability: "High", description: "Flood risk data unavailable. Assumed very low risk.", station: null, activeAlerts: 0, source: "Estimated" };
   };
 
   // 2e. Mobile coverage (Ofcom)
   const getMobileCoverage = async (): Promise<any[]> => {
+    const tMobile = Date.now();
     try {
       const apiKey = process.env.OFCOM_API_KEY;
       if (!apiKey) { console.error("[Ofcom Mobile] OFCOM_API_KEY environment variable is not set — mobile coverage will be unavailable."); return []; }
@@ -670,12 +697,15 @@ async function fetchAreaMetrics(postcode: string) {
       }
       const ops = [{ name: "EE", prefix: "EE" }, { name: "Vodafone", prefix: "VO" }, { name: "O2", prefix: "TF" }, { name: "Three", prefix: "H3" }];
       const covered = (field: string) => { const total = addresses.length; if (total === 0) return false; return addresses.filter((a) => (a[field] ?? 0) > 0).length / total >= 0.5; };
-      return ops.map(({ name, prefix }) => ({ name, data4GOutdoor: covered(`${prefix}DataOutdoor`), data4GIndoor: covered(`${prefix}DataIndoor`) }));
-    } catch (e) { console.error("Mobile coverage fetch failed:", e); return []; }
+      const result = ops.map(({ name, prefix }) => ({ name, data4GOutdoor: covered(`${prefix}DataOutdoor`), data4GIndoor: covered(`${prefix}DataIndoor`) }));
+      console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms`);
+      return result;
+    } catch (e) { console.error("Mobile coverage fetch failed:", e); console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms (failed)`); return []; }
   };
 
   // 2f. Broadband (Ofcom)
   const getBroadbandAvailability = async (): Promise<any[]> => {
+    const tBroadband = Date.now();
     try {
       const apiKey = process.env.OFCOM_BROADBAND_API_KEY;
       if (!apiKey) throw new Error("OFCOM_BROADBAND_API_KEY not set");
@@ -686,23 +716,26 @@ async function fetchAreaMetrics(postcode: string) {
       const addresses: any[] = data?.Availability || [];
       if (addresses.length === 0) return [];
       const maxOf = (field: string) => addresses.reduce((max: number, a: any) => Math.max(max, a[field] ?? 0), 0);
-      return [
+      const result = [
         { type: "Standard",  downField: "MaxBbPredictedDown",   upField: "MaxBbPredictedUp" },
         { type: "Superfast", downField: "MaxSfbbPredictedDown", upField: "MaxSfbbPredictedUp" },
         { type: "Ultrafast", downField: "MaxUfbbPredictedDown", upField: "MaxUfbbPredictedUp" },
       ].map(({ type, downField, upField }) => { const maxDownMbps = maxOf(downField); return { type, maxDownMbps, maxUpMbps: maxOf(upField), available: maxDownMbps > 0 }; });
-    } catch (e) { console.error("Broadband availability fetch failed:", e); return []; }
+      console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms`);
+      return result;
+    } catch (e) { console.error("Broadband availability fetch failed:", e); console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms (failed)`); return []; }
   };
 
   // 2g. EV chargers (OpenChargeMap)
   const getEvChargers = async (): Promise<any[]> => {
+    const tEv = Date.now();
     try {
       const apiKey = process.env.OPENCHARGEMAP_API_KEY;
       if (!apiKey) return [];
       const res = await fetch(`https://api.openchargemap.io/v3/poi/?output=json&countrycode=GB&maxresults=5&latitude=${lat}&longitude=${lng}&distance=10&distanceunit=KM&key=${apiKey}`, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return [];
       const data = await res.json();
-      return (data || []).map((poi: any) => ({
+      const result = (data || []).map((poi: any) => ({
         name: poi.AddressInfo?.Title || "Unknown", town: poi.AddressInfo?.Town || "",
         distance: poi.AddressInfo?.Distance ? Math.round(poi.AddressInfo.Distance * 100) / 100 : null,
         operator: poi.OperatorInfo?.Title || "Unknown",
@@ -710,22 +743,29 @@ async function fetchAreaMetrics(postcode: string) {
         usageCost: poi.UsageCost || null,
         connections: (poi.Connections || []).map((c: any) => ({ type: c.ConnectionType?.Title || "Unknown", level: c.Level?.Title || "", powerKW: c.PowerKW || null, quantity: c.Quantity || 1 }))
       }));
-    } catch (e) { console.error("EV charger fetch failed:", e); return []; }
+      console.log(`[timing] EV chargers phase: ${Date.now() - tEv}ms`);
+      return result;
+    } catch (e) { console.error("EV charger fetch failed:", e); console.log(`[timing] EV chargers phase: ${Date.now() - tEv}ms (failed)`); return []; }
   };
 
-  // 2h. Nearest postcodes (for background pre-fetching after response)
+  // 2h. Nearest postcodes (shown in UI as "Nearby Neighbourhoods" — no background pre-fetching)
   const fetchNearest = async (): Promise<string[]> => {
+    const tNearest = Date.now();
     try {
       const res = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`, { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
         const nearestData = await res.json();
-        return nearestData.result.filter((p: any) => p.postcode !== geoData.result.postcode).slice(0, 5).map((p: any) => p.postcode);
+        const result = nearestData.result.filter((p: any) => p.postcode !== geoData.result.postcode).slice(0, 5).map((p: any) => p.postcode);
+        console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms`);
+        return result;
       }
     } catch {}
+    console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (failed)`);
     return [];
   };
 
   // 3. Run all tasks in parallel — nothing below depends on another until all complete
+  const tParallel = Date.now();
   const [
     elements,
     crimeResult,
@@ -745,6 +785,7 @@ async function fetchAreaMetrics(postcode: string) {
     getBroadbandAvailability(),
     getEvChargers()
   ]);
+  console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
 
   const overpassFailed = elements.length === 0;
   const airQualityEstimated = prefetchedAirQuality === null;
@@ -910,40 +951,6 @@ export async function registerRoutes(
         await storage.recordUserSearch(userId, assessment.id);
       }
       res.status(201).json(assessment);
-
-      // Trigger pre-fetching for nearest postcodes in the background with concurrency limit
-      if (data.metrics.nearestPostcodes && data.metrics.nearestPostcodes.length > 0) {
-        const fetchWithRetry = async (pc: string, retries = 2) => {
-          try {
-            const pcData = await fetchAreaMetrics(pc);
-            const pcScores = calculateScores(pcData.metrics, pcData.metrics.isScotland);
-            await storage.createAssessment({
-              postcode: pc.toUpperCase(),
-              lat: pcData.lat,
-              lng: pcData.lng,
-              rawMetrics: { ...pcData.metrics, street: pcData.street, city: pcData.city },
-              scores: pcScores
-            });
-            console.log(`Background fetch success: ${pc}`);
-          } catch (err: any) {
-            if (retries > 0 && err.message?.includes('timeout')) {
-              console.log(`Retrying ${pc} due to timeout...`);
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              return fetchWithRetry(pc, retries - 1);
-            }
-            console.error(`Background fetch failed for ${pc}:`, err.message);
-          }
-        };
-
-        // Run sequentially to avoid overwhelming Overpass API and trigger timeouts
-        (async () => {
-          for (const pc of data.metrics.nearestPostcodes) {
-            await fetchWithRetry(pc);
-            // Small delay between background tasks to be polite to APIs
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        })();
-      }
     } catch (e: any) {
       res.status(400).json({ message: e.message || "Failed to fetch data" });
     }

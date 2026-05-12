@@ -46,3 +46,7 @@ integrations = ["javascript_log_in_with_replit:2.0.0"]
 
 [userenv.shared]
 OFCOM_API_KEY = "defba531b0c2489a8a26930eaa80d961"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000

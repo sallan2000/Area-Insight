@@ -511,11 +511,12 @@ export default function Report() {
                   title="Safety"
                   score={scores.safety}
                   icon={<Shield className="w-6 h-6" />}
-                  description={`${raw.crimeCount || 0} incidents reported in the last 12 months`}
+                  description={raw.crimeDataUnavailable ? "Crime data not available for Scotland" : `${raw.crimeCount || 0} incidents reported in the last 12 months`}
                   status={getOverallGrade(scores.safety)}
-                  trend={raw.crimeTrend === 'up' ? 'up' : 'down'}
+                  trend={raw.crimeDataUnavailable ? undefined : (raw.crimeTrend === 'up' ? 'up' : 'down')}
                   isActive={activeTab === 'safety'}
                   onClick={() => setActiveTab('safety')}
+                  scoreUnavailable={raw.crimeDataUnavailable}
                 />
                 <MetricCard
                   title="Schools"
@@ -552,7 +553,9 @@ export default function Report() {
                     <div className="p-6 bg-gray-50 rounded-xl border border-border">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
-                        <span className="text-2xl font-bold text-primary">{activeTab ? Math.round(scores[activeTab]) : 0}/100</span>
+                        <span className="text-2xl font-bold text-primary">
+                          {activeTab === 'safety' && raw.crimeDataUnavailable ? "N/A" : `${activeTab ? Math.round(scores[activeTab]) : 0}/100`}
+                        </span>
                       </div>
                       <div className="prose prose-sm text-muted-foreground">
                         <p>
@@ -566,7 +569,7 @@ export default function Report() {
                       <div className="p-4 bg-gray-50 rounded-xl border border-border">
                         <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
                         <p className="text-xl font-bold text-foreground">
-                          {activeTab === 'safety' ? `${raw.crimeCount} incidents` : 
+                          {activeTab === 'safety' ? (raw.crimeDataUnavailable ? "No data" : `${raw.crimeCount} incidents`) : 
                            activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` : 
                            activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` : 
                            `${raw.amenities?.totalCount || 0} local services`}
@@ -581,6 +584,14 @@ export default function Report() {
                       <ul className="space-y-2">
                         {activeTab === 'safety' && (
                           <div className="space-y-6">
+                            {raw.crimeDataUnavailable && (
+                              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                                <h5 className="text-sm font-bold text-amber-800 mb-1">Crime data unavailable</h5>
+                                <p className="text-xs text-amber-700">
+                                  Police Scotland does not publish crime statistics through the national police.uk API used by ScoreMyStreet. No crime figures are available for Scottish postcodes.
+                                </p>
+                              </div>
+                            )}
                             {raw.neighbourhood && (
                               <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
                                 <h5 className="text-sm font-bold text-primary mb-1">Police Neighbourhood: {raw.neighbourhood.name}</h5>
@@ -592,22 +603,24 @@ export default function Report() {
                                 )}
                               </div>
                             )}
-                            <div className="space-y-3">
-                              {safetyBreakdownItems.map((item) => (
-                                <div key={item.label} className="space-y-1">
-                                  <div className="flex justify-between text-xs font-medium">
-                                    <span>{item.label}</span>
-                                    <span>{item.value}</span>
+                            {!raw.crimeDataUnavailable && (
+                              <div className="space-y-3">
+                                {safetyBreakdownItems.map((item) => (
+                                  <div key={item.label} className="space-y-1">
+                                    <div className="flex justify-between text-xs font-medium">
+                                      <span>{item.label}</span>
+                                      <span>{item.value}</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                      <div 
+                                        className={`${item.color} h-1.5 rounded-full`} 
+                                        style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                      />
+                                    </div>
                                   </div>
-                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                    <div 
-                                      className={`${item.color} h-1.5 rounded-full`} 
-                                      style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                         {activeTab === 'transport' && (

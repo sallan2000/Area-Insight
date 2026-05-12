@@ -12,6 +12,7 @@ interface MetricCardProps {
   onClick?: () => void;
   isActive?: boolean;
   scoreUnavailable?: boolean;
+  overpassFailed?: boolean;
 }
 
 export function MetricCard({ 
@@ -23,7 +24,8 @@ export function MetricCard({
   trend,
   onClick,
   isActive,
-  scoreUnavailable
+  scoreUnavailable,
+  overpassFailed
 }: MetricCardProps) {
   return (
     <div 

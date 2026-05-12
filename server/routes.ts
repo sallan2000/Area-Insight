@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
+import { assessRateLimit, shareRateLimit } from "./rateLimits";
 import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -77,6 +78,7 @@ const daqiBands = (pm25: number, pm10: number, no2: number, o3: number) => {
 
 interface ProcessElementsInput {
   elements: any[];
+  overpassFailed: boolean;
   lat: number;
   lng: number;
   geoData: any;
@@ -95,6 +97,7 @@ interface ProcessElementsInput {
   streetName: string;
   neighbourhoodInfo: any;
   prefetchedAirQuality: any;
+  airQualityEstimated: boolean;
   floodRisk: any;
   mobile: any[];
   broadband: any[];
@@ -103,7 +106,7 @@ interface ProcessElementsInput {
 }
 
 function processElements(input: ProcessElementsInput) {
-  const { elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable } = input;
+  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -381,12 +384,16 @@ function processElements(input: ProcessElementsInput) {
     lng: String(lng),
     street: streetName || street,
     city,
+    overpassFailed,
+    airQualityEstimated,
     metrics: {
       ...resultMetrics,
       street: streetName || street,
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
       isScotland: geoData.result.country === 'Scotland',
-      crimeDataUnavailable
+      crimeDataUnavailable,
+      overpassFailed,
+      airQualityEstimated
     }
   };
 }
@@ -403,6 +410,7 @@ async function fetchAreaMetrics(postcode: string) {
     throw new Error("Invalid postcode");
   }
   const geoData = await geoRes.json();
+  console.log(`[timing] geocode phase: ${Date.now() - t0}ms`);
 
   const lat = geoData.result.latitude;
   const lng = geoData.result.longitude;
@@ -417,14 +425,13 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter"
   ];
-  // [timeout:90]: server-side execution budget — lets the Overpass server finish the query.
-  // AbortSignal.timeout(35000): client-side hard ceiling per mirror — if the server hasn't
-  // responded in 35 s we abandon it and let the other racing mirrors win.
-  // Previous [timeout:25] caused the server to cut the query short and return empty elements
-  // (no remark) which Promise.any() incorrectly accepted as a valid empty result, scoring
-  // transport/schools/amenities as 0 for all dense urban postcodes.
+  // [timeout:25]: server-side execution budget. Must stay below the client-side
+  // AbortSignal.timeout(35000) so the server always responds before the client gives up.
+  // A higher value (e.g. 90) causes all mirrors to fail: the server is still processing
+  // when the 35 s client abort fires, returning nothing. The "throw on 0 elements" guard
+  // below handles cases where the server cuts the query short with an empty result.
   const overpassQuery = `
-    [out:json][timeout:90];
+    [out:json][timeout:25];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});
@@ -448,6 +455,7 @@ async function fetchAreaMetrics(postcode: string) {
   // Mirrors that return the Overpass server-timeout remark ("runtime error … exceeded")
   // or return empty elements are rejected so the race continues to other mirrors.
   const fetchFromOverpass = async (): Promise<any[]> => {
+    const tOverpass = Date.now();
     const tryMirror = async (endpoint: string): Promise<any[]> => {
       const res = await fetch(endpoint, {
         method: "POST",
@@ -479,39 +487,53 @@ async function fetchAreaMetrics(postcode: string) {
     };
 
     try {
-      return await Promise.any(
+      const result = await Promise.any(
         overpassEndpoints.map(ep =>
           tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
         )
       );
+      console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (${result.length} elements)`);
+      return result;
     } catch {
       // All mirrors failed — return empty so the rest of the assessment still proceeds
       // (safety/environment/connectivity scores will still be calculated correctly)
+      console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (all mirrors failed)`);
       return [];
     }
   };
 
-  // 2b. Crime — neighbourhood lookup (sequential, must precede monthly batch) then 12 months in parallel
-  //     crimes-no-location removed: those crimes have no geographic coordinates and don't improve local accuracy
+  // 2b. Crime — monthly fetches and neighbourhood lookup run concurrently.
+  //     The 12 street-crime requests only need lat/lng, so they start immediately.
+  //     locate-neighbourhood → neighbourhood runs in parallel; a 5 s timeout on the
+  //     first leg means a failed/slow police API short-circuits without blocking crimes.
+  //     crimes-no-location removed: those crimes have no geographic coordinates and
+  //     don't improve local accuracy.
   const fetchCrimeData = async (): Promise<{ allMonthsCrimes: any[][], neighbourhoodInfo: any, lastDateStr: string }> => {
-    let neighbourhoodInfo: any = null;
-    try {
-      const locateRes = await fetch(
-        `https://data.police.uk/api/locate-neighbourhood?q=${lat},${lng}`,
-        { signal: AbortSignal.timeout(10000) }
-      );
-      if (locateRes.ok) {
+    const tCrime = Date.now();
+
+    // Neighbourhood lookup — two sequential steps, but with a short outer timeout so a
+    // slow or missing police force doesn't delay the entire crime phase.
+    const neighbourhoodTask = (async (): Promise<any> => {
+      try {
+        const locateRes = await fetch(
+          `https://data.police.uk/api/locate-neighbourhood?q=${lat},${lng}`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (!locateRes.ok) return null;
         const locateData = await locateRes.json();
+        if (!locateData?.force || !locateData?.neighbourhood) return null;
         const hoodRes = await fetch(
           `https://data.police.uk/api/${locateData.force}/${locateData.neighbourhood}`,
-          { signal: AbortSignal.timeout(10000) }
+          { signal: AbortSignal.timeout(5000) }
         );
-        if (hoodRes.ok) neighbourhoodInfo = await hoodRes.json();
+        return hoodRes.ok ? await hoodRes.json() : null;
+      } catch (e) {
+        console.error("Neighbourhood locate failed:", e);
+        return null;
       }
-    } catch (e) {
-      console.error("Neighbourhood locate failed:", e);
-    }
+    })();
 
+    // 12 monthly crime fetches — all start immediately in parallel
     const today = new Date();
     let lastDateStr = "";
     const monthPromises = Array.from({ length: 12 }, (_, idx) => {
@@ -542,12 +564,18 @@ async function fetchAreaMetrics(postcode: string) {
       })();
     });
 
-    const allMonthsCrimes = await Promise.all(monthPromises);
+    const [allMonthsCrimes, neighbourhoodInfo] = await Promise.all([
+      Promise.all(monthPromises),
+      neighbourhoodTask
+    ]);
+
+    console.log(`[timing] crime phase: ${Date.now() - tCrime}ms`);
     return { allMonthsCrimes, neighbourhoodInfo, lastDateStr };
   };
 
   // 2c. Air quality (DEFRA) — returns real data or null; heuristic fallback applied later in processElements
   const getAirQualityFromDefra = async (): Promise<any | null> => {
+    const tAq = Date.now();
     try {
       const res = await fetch(`https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations?near=${lat},${lng}&limit=1`, {
         headers: { 'Accept': 'application/json' },
@@ -580,6 +608,7 @@ async function fetchAreaMetrics(postcode: string) {
             const no2 = pollutantMap["NO₂"] || 0, o3 = pollutantMap["O₃"] || 0;
             if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
               const daqi = daqiBands(pm25, pm10, no2, o3);
+              console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (real data)`);
               return {
                 index: daqi, level: daqiLevel(daqi), description: daqiDesc(daqi),
                 pollutants: Object.entries(pollutantMap).map(([name, value]) => ({ name, value: Math.round(value * 10) / 10, unit: "μg/m³" })),
@@ -591,11 +620,13 @@ async function fetchAreaMetrics(postcode: string) {
         }
       }
     } catch (e) { console.error("DEFRA UK-AIR fetch failed:", e); }
+    console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (no real data)`);
     return null;
   };
 
   // 2d. Flood risk (Environment Agency)
   const getFloodRisk = async (): Promise<any> => {
+    const tFlood = Date.now();
     try {
       const [alertsRes, stationsRes] = await Promise.all([
         fetch(`https://environment.data.gov.uk/flood-monitoring/id/floods?lat=${lat}&long=${lng}&dist=5`, { signal: AbortSignal.timeout(8000) }),
@@ -642,11 +673,13 @@ async function fetchAreaMetrics(postcode: string) {
         activeAlerts: alertCount, source: "Environment Agency"
       };
     } catch (e) { console.error("Flood risk fetch failed:", e); }
+    console.log(`[timing] flood phase: ${Date.now() - tFlood}ms (fallback)`);
     return { likelihood: "Very Low", suitability: "High", description: "Flood risk data unavailable. Assumed very low risk.", station: null, activeAlerts: 0, source: "Estimated" };
   };
 
   // 2e. Mobile coverage (Ofcom)
   const getMobileCoverage = async (): Promise<any[]> => {
+    const tMobile = Date.now();
     try {
       const apiKey = process.env.OFCOM_API_KEY;
       if (!apiKey) { console.error("[Ofcom Mobile] OFCOM_API_KEY environment variable is not set — mobile coverage will be unavailable."); return []; }
@@ -663,12 +696,15 @@ async function fetchAreaMetrics(postcode: string) {
       }
       const ops = [{ name: "EE", prefix: "EE" }, { name: "Vodafone", prefix: "VO" }, { name: "O2", prefix: "TF" }, { name: "Three", prefix: "H3" }];
       const covered = (field: string) => { const total = addresses.length; if (total === 0) return false; return addresses.filter((a) => (a[field] ?? 0) > 0).length / total >= 0.5; };
-      return ops.map(({ name, prefix }) => ({ name, data4GOutdoor: covered(`${prefix}DataOutdoor`), data4GIndoor: covered(`${prefix}DataIndoor`) }));
-    } catch (e) { console.error("Mobile coverage fetch failed:", e); return []; }
+      const result = ops.map(({ name, prefix }) => ({ name, data4GOutdoor: covered(`${prefix}DataOutdoor`), data4GIndoor: covered(`${prefix}DataIndoor`) }));
+      console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms`);
+      return result;
+    } catch (e) { console.error("Mobile coverage fetch failed:", e); console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms (failed)`); return []; }
   };
 
   // 2f. Broadband (Ofcom)
   const getBroadbandAvailability = async (): Promise<any[]> => {
+    const tBroadband = Date.now();
     try {
       const apiKey = process.env.OFCOM_BROADBAND_API_KEY;
       if (!apiKey) throw new Error("OFCOM_BROADBAND_API_KEY not set");
@@ -679,23 +715,26 @@ async function fetchAreaMetrics(postcode: string) {
       const addresses: any[] = data?.Availability || [];
       if (addresses.length === 0) return [];
       const maxOf = (field: string) => addresses.reduce((max: number, a: any) => Math.max(max, a[field] ?? 0), 0);
-      return [
+      const result = [
         { type: "Standard",  downField: "MaxBbPredictedDown",   upField: "MaxBbPredictedUp" },
         { type: "Superfast", downField: "MaxSfbbPredictedDown", upField: "MaxSfbbPredictedUp" },
         { type: "Ultrafast", downField: "MaxUfbbPredictedDown", upField: "MaxUfbbPredictedUp" },
       ].map(({ type, downField, upField }) => { const maxDownMbps = maxOf(downField); return { type, maxDownMbps, maxUpMbps: maxOf(upField), available: maxDownMbps > 0 }; });
-    } catch (e) { console.error("Broadband availability fetch failed:", e); return []; }
+      console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms`);
+      return result;
+    } catch (e) { console.error("Broadband availability fetch failed:", e); console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms (failed)`); return []; }
   };
 
   // 2g. EV chargers (OpenChargeMap)
   const getEvChargers = async (): Promise<any[]> => {
+    const tEv = Date.now();
     try {
       const apiKey = process.env.OPENCHARGEMAP_API_KEY;
       if (!apiKey) return [];
       const res = await fetch(`https://api.openchargemap.io/v3/poi/?output=json&countrycode=GB&maxresults=5&latitude=${lat}&longitude=${lng}&distance=10&distanceunit=KM&key=${apiKey}`, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) return [];
       const data = await res.json();
-      return (data || []).map((poi: any) => ({
+      const result = (data || []).map((poi: any) => ({
         name: poi.AddressInfo?.Title || "Unknown", town: poi.AddressInfo?.Town || "",
         distance: poi.AddressInfo?.Distance ? Math.round(poi.AddressInfo.Distance * 100) / 100 : null,
         operator: poi.OperatorInfo?.Title || "Unknown",
@@ -703,22 +742,29 @@ async function fetchAreaMetrics(postcode: string) {
         usageCost: poi.UsageCost || null,
         connections: (poi.Connections || []).map((c: any) => ({ type: c.ConnectionType?.Title || "Unknown", level: c.Level?.Title || "", powerKW: c.PowerKW || null, quantity: c.Quantity || 1 }))
       }));
-    } catch (e) { console.error("EV charger fetch failed:", e); return []; }
+      console.log(`[timing] EV chargers phase: ${Date.now() - tEv}ms`);
+      return result;
+    } catch (e) { console.error("EV charger fetch failed:", e); console.log(`[timing] EV chargers phase: ${Date.now() - tEv}ms (failed)`); return []; }
   };
 
-  // 2h. Nearest postcodes (for background pre-fetching after response)
+  // 2h. Nearest postcodes (shown in UI as "Nearby Neighbourhoods" — no background pre-fetching)
   const fetchNearest = async (): Promise<string[]> => {
+    const tNearest = Date.now();
     try {
       const res = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`, { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
         const nearestData = await res.json();
-        return nearestData.result.filter((p: any) => p.postcode !== geoData.result.postcode).slice(0, 5).map((p: any) => p.postcode);
+        const result = nearestData.result.filter((p: any) => p.postcode !== geoData.result.postcode).slice(0, 5).map((p: any) => p.postcode);
+        console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms`);
+        return result;
       }
     } catch {}
+    console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (failed)`);
     return [];
   };
 
   // 3. Run all tasks in parallel — nothing below depends on another until all complete
+  const tParallel = Date.now();
   const [
     elements,
     crimeResult,
@@ -738,6 +784,10 @@ async function fetchAreaMetrics(postcode: string) {
     getBroadbandAvailability(),
     getEvChargers()
   ]);
+  console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
+
+  const overpassFailed = elements.length === 0;
+  const airQualityEstimated = prefetchedAirQuality === null;
 
   // 4. Post-parallel processing
 
@@ -806,7 +856,7 @@ async function fetchAreaMetrics(postcode: string) {
   console.log(`fetchAreaMetrics: ${geoData.result.postcode} completed in ${Date.now() - t0}ms`);
 
   return processElements({
-    elements, lat, lng, geoData,
+    elements, overpassFailed, airQualityEstimated, lat, lng, geoData,
     crimesData, crimeCount, crimeTrend, severityScore,
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
@@ -861,7 +911,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  app.post(api.assess.create.path, async (req, res) => {
+  app.post(api.assess.create.path, assessRateLimit, async (req, res) => {
     try {
       const { postcode } = api.assess.create.input.parse(req.body);
       const cleanPostcode = postcode.trim().toUpperCase();
@@ -871,8 +921,10 @@ export async function registerRoutes(
       
       if (cached) {
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const oneDayInMs = 24 * 60 * 60 * 1000;
         const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
-        const isFresh = (Date.now() - lastSearchedAt) < thirtyDaysInMs;
+        const cacheTtl = cached.partialData ? oneDayInMs : thirtyDaysInMs;
+        const isFresh = (Date.now() - lastSearchedAt) < cacheTtl;
 
         if (isFresh) {
           await Promise.all([
@@ -885,51 +937,19 @@ export async function registerRoutes(
 
       const data = await fetchAreaMetrics(cleanPostcode);
       const scores = calculateScores(data.metrics, data.metrics.isScotland);
+      const partialData = data.overpassFailed || false;
       const assessment = await storage.createAssessment({
         postcode: cleanPostcode,
         lat: data.lat,
         lng: data.lng,
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
-        scores: scores
+        scores: scores,
+        partialData
       }, cached?.id);
       if (userId) {
         await storage.recordUserSearch(userId, assessment.id);
       }
       res.status(201).json(assessment);
-
-      // Trigger pre-fetching for nearest postcodes in the background with concurrency limit
-      if (data.metrics.nearestPostcodes && data.metrics.nearestPostcodes.length > 0) {
-        const fetchWithRetry = async (pc: string, retries = 2) => {
-          try {
-            const pcData = await fetchAreaMetrics(pc);
-            const pcScores = calculateScores(pcData.metrics, pcData.metrics.isScotland);
-            await storage.createAssessment({
-              postcode: pc.toUpperCase(),
-              lat: pcData.lat,
-              lng: pcData.lng,
-              rawMetrics: { ...pcData.metrics, street: pcData.street, city: pcData.city },
-              scores: pcScores
-            });
-            console.log(`Background fetch success: ${pc}`);
-          } catch (err: any) {
-            if (retries > 0 && err.message?.includes('timeout')) {
-              console.log(`Retrying ${pc} due to timeout...`);
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              return fetchWithRetry(pc, retries - 1);
-            }
-            console.error(`Background fetch failed for ${pc}:`, err.message);
-          }
-        };
-
-        // Run sequentially to avoid overwhelming Overpass API and trigger timeouts
-        (async () => {
-          for (const pc of data.metrics.nearestPostcodes) {
-            await fetchWithRetry(pc);
-            // Small delay between background tasks to be polite to APIs
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        })();
-      }
     } catch (e: any) {
       res.status(400).json({ message: e.message || "Failed to fetch data" });
     }
@@ -939,6 +959,36 @@ export async function registerRoutes(
     const assessment = await storage.getAssessment(Number(req.params.id));
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     res.json(assessment);
+  });
+
+  app.post("/api/assess/:id/refresh", assessRateLimit, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid assessment ID" });
+      const existing = await storage.getAssessment(id);
+      if (!existing) return res.status(404).json({ message: "Assessment not found" });
+
+      const data = await fetchAreaMetrics(existing.postcode);
+      const scores = calculateScores(data.metrics, data.metrics.isScotland);
+      const partialData = data.overpassFailed || false;
+      const updated = await storage.createAssessment({
+        postcode: existing.postcode,
+        lat: data.lat,
+        lng: data.lng,
+        rawMetrics: { ...data.metrics, street: data.street, city: data.city },
+        scores,
+        partialData
+      }, id);
+
+      const userId = (req.user as any)?.claims?.sub || null;
+      if (userId) {
+        await storage.recordUserSearch(userId, id);
+      }
+
+      res.json(updated);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message || "Failed to refresh assessment" });
+    }
   });
 
   app.get("/api/my-assessments", async (req, res) => {
@@ -954,7 +1004,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/share", async (req, res) => {
+  app.post("/api/share", shareRateLimit, async (req, res) => {
     try {
       const data = insertShareRequestSchema.parse(req.body);
       const shareRequest = await storage.createShareRequest(data);

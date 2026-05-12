@@ -30,6 +30,7 @@ export class DatabaseStorage implements IStorage {
           lng: insertAssessment.lng,
           rawMetrics: insertAssessment.rawMetrics,
           scores: insertAssessment.scores,
+          partialData: insertAssessment.partialData ?? false,
           lastSearchedAt: new Date(),
         })
         .where(eq(assessments.id, existingId))

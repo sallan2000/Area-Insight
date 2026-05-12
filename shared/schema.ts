@@ -1,4 +1,4 @@
-import { pgTable, text, serial, jsonb, timestamp, varchar, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, jsonb, timestamp, varchar, integer, index, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -16,6 +16,7 @@ export const assessments = pgTable("assessments", {
   userId: varchar("user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   lastSearchedAt: timestamp("last_searched_at").defaultNow(),
+  partialData: boolean("partial_data").default(false),
 }, (table) => [
   index("assessments_postcode_idx").on(table.postcode),
 ]);

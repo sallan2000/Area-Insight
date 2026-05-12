@@ -99,10 +99,11 @@ interface ProcessElementsInput {
   mobile: any[];
   broadband: any[];
   evChargers: any[];
+  crimeDataUnavailable: boolean;
 }
 
 function processElements(input: ProcessElementsInput) {
-  const { elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers } = input;
+  const { elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -384,7 +385,8 @@ function processElements(input: ProcessElementsInput) {
       ...resultMetrics,
       street: streetName || street,
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
-      isScotland: geoData.result.country === 'Scotland'
+      isScotland: geoData.result.country === 'Scotland',
+      crimeDataUnavailable
     }
   };
 }
@@ -754,18 +756,11 @@ async function fetchAreaMetrics(postcode: string) {
   const { allMonthsCrimes, neighbourhoodInfo, lastDateStr } = crimeResult;
   let crimesData: any[] = allMonthsCrimes.flat();
 
-  // Scotland fallback
+  // Scotland: Police Scotland does not publish data via the police.uk API
   const isScotland = geoData.result.country === 'Scotland';
-  if (crimesData.length === 0 && isScotland) {
-    console.log("Scottish postcode detected with no crime data, applying fallback stats...");
-    const isUrban = ['glasgow', 'edinburgh', 'aberdeen', 'dundee'].some(c => (geoData.result.admin_district || '').toLowerCase().includes(c));
-    const baseCount = Math.floor(Math.random() * 20 + 10) * (isUrban ? 1.5 : 0.8);
-    const cats = [{ cat: 'violent-crime', w: 0.25 }, { cat: 'anti-social-behaviour', w: 0.35 }, { cat: 'burglary', w: 0.15 }, { cat: 'vehicle-crime', w: 0.15 }, { cat: 'drugs', w: 0.10 }];
-    for (let i = 0; i < baseCount; i++) {
-      const rand = Math.random(); let cum = 0; let selectedCat = 'anti-social-behaviour';
-      for (const { cat, w } of cats) { cum += w; if (rand <= cum) { selectedCat = cat; break; } }
-      crimesData.push({ id: `sim-${i}`, category: selectedCat, location: { latitude: lat + (Math.random() - 0.5) * 0.01, longitude: lng + (Math.random() - 0.5) * 0.01 }, distance: Math.random() * 1.0, month: lastDateStr });
-    }
+  const crimeDataUnavailable = isScotland && crimesData.length === 0;
+  if (crimeDataUnavailable) {
+    console.log("Scottish postcode detected with no crime data — marking as unavailable (no fallback applied).");
   }
 
   // Area normalisation
@@ -815,7 +810,8 @@ async function fetchAreaMetrics(postcode: string) {
     crimesData, crimeCount, crimeTrend, severityScore,
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
-    prefetchedAirQuality, floodRisk, mobile, broadband, evChargers
+    prefetchedAirQuality, floodRisk, mobile, broadband, evChargers,
+    crimeDataUnavailable
   });
 }
 

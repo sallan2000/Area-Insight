@@ -425,14 +425,13 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter"
   ];
-  // [timeout:90]: server-side execution budget — lets the Overpass server finish the query.
-  // AbortSignal.timeout(35000): client-side hard ceiling per mirror — if the server hasn't
-  // responded in 35 s we abandon it and let the other racing mirrors win.
-  // Previous [timeout:25] caused the server to cut the query short and return empty elements
-  // (no remark) which Promise.any() incorrectly accepted as a valid empty result, scoring
-  // transport/schools/amenities as 0 for all dense urban postcodes.
+  // [timeout:25]: server-side execution budget. Must stay below the client-side
+  // AbortSignal.timeout(35000) so the server always responds before the client gives up.
+  // A higher value (e.g. 90) causes all mirrors to fail: the server is still processing
+  // when the 35 s client abort fires, returning nothing. The "throw on 0 elements" guard
+  // below handles cases where the server cuts the query short with an empty result.
   const overpassQuery = `
-    [out:json][timeout:90];
+    [out:json][timeout:25];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});

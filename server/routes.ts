@@ -78,6 +78,7 @@ const daqiBands = (pm25: number, pm10: number, no2: number, o3: number) => {
 
 interface ProcessElementsInput {
   elements: any[];
+  overpassFailed: boolean;
   lat: number;
   lng: number;
   geoData: any;
@@ -96,6 +97,7 @@ interface ProcessElementsInput {
   streetName: string;
   neighbourhoodInfo: any;
   prefetchedAirQuality: any;
+  airQualityEstimated: boolean;
   floodRisk: any;
   mobile: any[];
   broadband: any[];
@@ -104,7 +106,7 @@ interface ProcessElementsInput {
 }
 
 function processElements(input: ProcessElementsInput) {
-  const { elements, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable } = input;
+  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -382,12 +384,16 @@ function processElements(input: ProcessElementsInput) {
     lng: String(lng),
     street: streetName || street,
     city,
+    overpassFailed,
+    airQualityEstimated,
     metrics: {
       ...resultMetrics,
       street: streetName || street,
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
       isScotland: geoData.result.country === 'Scotland',
-      crimeDataUnavailable
+      crimeDataUnavailable,
+      overpassFailed,
+      airQualityEstimated
     }
   };
 }
@@ -740,6 +746,9 @@ async function fetchAreaMetrics(postcode: string) {
     getEvChargers()
   ]);
 
+  const overpassFailed = elements.length === 0;
+  const airQualityEstimated = prefetchedAirQuality === null;
+
   // 4. Post-parallel processing
 
   // Extract street name from Overpass elements
@@ -807,7 +816,7 @@ async function fetchAreaMetrics(postcode: string) {
   console.log(`fetchAreaMetrics: ${geoData.result.postcode} completed in ${Date.now() - t0}ms`);
 
   return processElements({
-    elements, lat, lng, geoData,
+    elements, overpassFailed, airQualityEstimated, lat, lng, geoData,
     crimesData, crimeCount, crimeTrend, severityScore,
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
@@ -872,8 +881,10 @@ export async function registerRoutes(
       
       if (cached) {
         const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const oneDayInMs = 24 * 60 * 60 * 1000;
         const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
-        const isFresh = (Date.now() - lastSearchedAt) < thirtyDaysInMs;
+        const cacheTtl = cached.partialData ? oneDayInMs : thirtyDaysInMs;
+        const isFresh = (Date.now() - lastSearchedAt) < cacheTtl;
 
         if (isFresh) {
           await Promise.all([
@@ -886,12 +897,14 @@ export async function registerRoutes(
 
       const data = await fetchAreaMetrics(cleanPostcode);
       const scores = calculateScores(data.metrics, data.metrics.isScotland);
+      const partialData = data.overpassFailed || false;
       const assessment = await storage.createAssessment({
         postcode: cleanPostcode,
         lat: data.lat,
         lng: data.lng,
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
-        scores: scores
+        scores: scores,
+        partialData
       }, cached?.id);
       if (userId) {
         await storage.recordUserSearch(userId, assessment.id);
@@ -940,6 +953,36 @@ export async function registerRoutes(
     const assessment = await storage.getAssessment(Number(req.params.id));
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     res.json(assessment);
+  });
+
+  app.post("/api/assess/:id/refresh", assessRateLimit, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid assessment ID" });
+      const existing = await storage.getAssessment(id);
+      if (!existing) return res.status(404).json({ message: "Assessment not found" });
+
+      const data = await fetchAreaMetrics(existing.postcode);
+      const scores = calculateScores(data.metrics, data.metrics.isScotland);
+      const partialData = data.overpassFailed || false;
+      const updated = await storage.createAssessment({
+        postcode: existing.postcode,
+        lat: data.lat,
+        lng: data.lng,
+        rawMetrics: { ...data.metrics, street: data.street, city: data.city },
+        scores,
+        partialData
+      }, id);
+
+      const userId = (req.user as any)?.claims?.sub || null;
+      if (userId) {
+        await storage.recordUserSearch(userId, id);
+      }
+
+      res.json(updated);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message || "Failed to refresh assessment" });
+    }
   });
 
   app.get("/api/my-assessments", async (req, res) => {

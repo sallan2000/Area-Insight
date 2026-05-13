@@ -268,11 +268,11 @@ export default function Report() {
     return "Poor";
   };
 
+  const safetyExcluded = !!(raw?.crimeDataUnavailable);
   const overallScore = Math.round(
-    (0.25 * scores.transport) + 
-    (0.35 * Math.sqrt(scores.safety) * 10) + 
-    (0.20 * scores.schools) + 
-    (0.20 * scores.amenities)
+    safetyExcluded
+      ? (scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65))
+      : (0.25 * scores.transport) + (0.35 * Math.sqrt(scores.safety) * 10) + (0.20 * scores.schools) + (0.20 * scores.amenities)
   );
 
   const copyToClipboard = () => {
@@ -465,17 +465,31 @@ export default function Report() {
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Calculation</p>
                     <div className="bg-gray-50 rounded-lg p-3 border border-border">
-                      <p className="text-sm font-mono text-foreground leading-relaxed break-words">
-                        <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
-                        <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
-                        <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
-                        <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
-                        <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
-                      </p>
+                      {safetyExcluded ? (
+                        <p className="text-sm font-mono text-foreground leading-relaxed break-words">
+                          <span className="text-primary font-bold">0.38</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
+                          <span className="text-primary font-bold"> 0.31</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
+                          <span className="text-primary font-bold"> 0.31</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
+                          <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
+                        </p>
+                      ) : (
+                        <p className="text-sm font-mono text-foreground leading-relaxed break-words">
+                          <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
+                          <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
+                          <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
+                          <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
+                          <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
+                        </p>
+                      )}
                     </div>
+                    {safetyExcluded && (
+                      <p className="text-[10px] text-amber-600 font-medium text-center pt-1">
+                        Safety excluded — crime data not available in Scotland
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground font-medium uppercase pt-1">
                       <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Tr: Transport</div>
-                      <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
+                      <div className={`flex items-center gap-1.5 ${safetyExcluded ? "opacity-40 line-through" : ""}`}><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
                       <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Sc: Schools</div>
                       <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Am: Amenities</div>
                     </div>

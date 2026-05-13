@@ -896,14 +896,22 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
   const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
-  const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
+
+  // When safety data is unavailable (Scotland), exclude it from the total and
+  // redistribute its 35% weight proportionally across the remaining categories:
+  //   Transport 25/65 ≈ 38.5%  |  Amenities 20/65 ≈ 30.8%  |  Schools 20/65 ≈ 30.8%
+  const safetyExcluded = !!metrics.crimeDataUnavailable;
+  const totalScore = safetyExcluded
+    ? (transportScoreFinal * (25 / 65)) + (amenitiesScoreFinal * (20 / 65)) + (schoolsScoreFinal * (20 / 65))
+    : (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
 
   return {
     transport: Math.round(transportScoreFinal),
     safety: Math.round(safetyScoreFinal),
     amenities: Math.round(amenitiesScoreFinal),
     schools: Math.round(schoolsScoreFinal),
-    total: Math.round(totalScore)
+    total: Math.round(totalScore),
+    safetyExcluded
   };
 }
 

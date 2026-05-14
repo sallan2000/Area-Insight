@@ -638,11 +638,35 @@ export default function Report() {
                         {activeTab === 'safety' && (
                           <div className="space-y-6">
                             {raw.crimeDataUnavailable && (
-                              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                                <h5 className="text-sm font-bold text-amber-800 mb-1">Crime data unavailable</h5>
-                                <p className="text-xs text-amber-700">
-                                  Police Scotland does not publish crime statistics through the national police.uk API used by ScoreMyStreet. No crime figures are available for Scottish postcodes.
-                                </p>
+                              <div className="space-y-3">
+                                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                                  <h5 className="text-sm font-bold text-amber-800 mb-1">Street-level crime data unavailable</h5>
+                                  <p className="text-xs text-amber-700">
+                                    Police Scotland does not publish street-level crime statistics through the national police.uk API. Safety is excluded from the liveability score for Scottish postcodes.
+                                  </p>
+                                </div>
+                                {raw.scotCrimeContext && (
+                                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200" data-testid="scot-crime-context">
+                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                      <h5 className="text-sm font-bold text-blue-800">Council Area Context</h5>
+                                      <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full whitespace-nowrap">Reference only</span>
+                                    </div>
+                                    <p className="text-xs text-blue-800 mb-3">
+                                      In {raw.scotCrimeContext.year}, <span className="font-semibold">{raw.scotCrimeContext.council}</span> recorded{" "}
+                                      <span className="font-bold">{raw.scotCrimeContext.ratePerThousand} crimes per 1,000 residents</span>{" "}
+                                      (Scotland average: {raw.scotCrimeContext.scotlandAvgPerThousand} per 1,000).
+                                    </p>
+                                    <div className="w-full bg-blue-100 rounded-full h-1.5 mb-1">
+                                      <div
+                                        className="bg-blue-400 h-1.5 rounded-full"
+                                        style={{ width: `${Math.min(100, (raw.scotCrimeContext.ratePerThousand / 100) * 100)}%` }}
+                                      />
+                                    </div>
+                                    <p className="text-[10px] text-blue-600 mt-2">
+                                      ⚠ This covers the entire {raw.scotCrimeContext.council} council area and is not specific to this postcode. It does not contribute to the liveability score. Source: Scottish Government, {raw.scotCrimeContext.year}.
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
                             {raw.neighbourhood && (

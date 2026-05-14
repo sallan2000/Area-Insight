@@ -26,6 +26,32 @@ try {
   console.error("Failed to load LSOA council tax band data:", e);
 }
 
+// Annual recorded crime rates per 10,000 population by Scottish local authority.
+// Source: Scottish Government — Recorded Crime in Scotland, 2023-24.
+// Used only as contextual reference for Scottish postcodes; does not contribute to scores.
+type ScotCrimeEntry = { name: string; rate: number };
+type ScotCrimeFile = { _meta: { year: string; scotlandAverage: number }; [key: string]: ScotCrimeEntry | { year: string; scotlandAverage: number } };
+let scotlandCrimeRateLookup: Record<string, ScotCrimeEntry> = {};
+let scotlandCrimeMeta = { year: "2023/24", scotlandAverage: 550 };
+try {
+  const basePath = join(process.cwd(), 'server', 'data', 'scotland-crime-rates.json');
+  const distPath = join(process.cwd(), 'dist', 'data', 'scotland-crime-rates.json');
+  let data: string;
+  try {
+    data = readFileSync(basePath, 'utf-8');
+  } catch {
+    data = readFileSync(distPath, 'utf-8');
+  }
+  const parsed = JSON.parse(data) as ScotCrimeFile;
+  scotlandCrimeMeta = parsed._meta as { year: string; scotlandAverage: number };
+  for (const [k, v] of Object.entries(parsed)) {
+    if (k !== '_meta') scotlandCrimeRateLookup[k] = v as ScotCrimeEntry;
+  }
+  console.log(`Loaded ${Object.keys(scotlandCrimeRateLookup).length} Scottish council crime rate entries`);
+} catch (e) {
+  console.error("Failed to load Scottish council crime rate data:", e);
+}
+
 // Modal council tax band per Scottish local authority (S12000xxx codes from postcodes.io).
 // Source: NRS Dwellings by Council Tax Band statistics + SAA published data (2024).
 // Derived from the distribution of dwellings across bands A–H per council area,
@@ -392,6 +418,18 @@ function processElements(input: ProcessElementsInput) {
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
       isScotland: geoData.result.country === 'Scotland',
       crimeDataUnavailable,
+      scotCrimeContext: (() => {
+        if (!crimeDataUnavailable) return null;
+        const councilCode = geoData.result.codes?.admin_district;
+        const entry = councilCode ? scotlandCrimeRateLookup[councilCode] : null;
+        if (!entry) return null;
+        return {
+          council: entry.name,
+          ratePerThousand: Math.round(entry.rate / 10 * 10) / 10,
+          scotlandAvgPerThousand: Math.round(scotlandCrimeMeta.scotlandAverage / 10 * 10) / 10,
+          year: scotlandCrimeMeta.year
+        };
+      })(),
       overpassFailed,
       airQualityEstimated
     }

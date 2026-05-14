@@ -603,32 +603,36 @@ export default function Report() {
               <div className="p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-6">
-                    <div className="p-6 bg-gray-50 rounded-xl border border-border">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
-                        <span className="text-2xl font-bold text-primary">
-                          {activeTab === 'safety' && raw.crimeDataUnavailable ? "N/A" : `${activeTab ? Math.round(scores[activeTab]) : 0}/100`}
-                        </span>
+                    {!(activeTab === 'safety' && raw.crimeDataUnavailable) && (
+                      <div className="p-6 bg-gray-50 rounded-xl border border-border">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
+                          <span className="text-2xl font-bold text-primary">
+                            {activeTab ? Math.round(scores[activeTab]) : 0}/100
+                          </span>
+                        </div>
+                        <div className="prose prose-sm text-muted-foreground">
+                          <p>
+                            The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
+                          </p>
+                        </div>
                       </div>
-                      <div className="prose prose-sm text-muted-foreground">
-                        <p>
-                          The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
-                        </p>
+                    )}
+
+                    {!(activeTab === 'safety' && raw.crimeDataUnavailable) && (
+                      <div className="space-y-4">
+                        <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
+                        <div className="p-4 bg-gray-50 rounded-xl border border-border">
+                          <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
+                          <p className="text-xl font-bold text-foreground">
+                            {activeTab === 'safety' ? `${raw.crimeCount} incidents` :
+                             activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` :
+                             activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` :
+                             `${raw.amenities?.totalCount || 0} local services`}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
-                      <div className="p-4 bg-gray-50 rounded-xl border border-border">
-                        <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
-                        <p className="text-xl font-bold text-foreground">
-                          {activeTab === 'safety' ? (raw.crimeDataUnavailable ? "No data" : `${raw.crimeCount} incidents`) : 
-                           activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` : 
-                           activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` : 
-                           `${raw.amenities?.totalCount || 0} local services`}
-                        </p>
-                      </div>
-                    </div>
+                    )}
                   </div>
 
                   <div className="space-y-4">

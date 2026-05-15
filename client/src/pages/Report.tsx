@@ -43,6 +43,7 @@ import { UserMenu } from "@/components/UserMenu";
 import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
+import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
 
@@ -141,20 +142,37 @@ export default function Report() {
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   const reportUrl = `${window.location.origin}/report/${id}`;
 
-  const exportAsImage = async () => {
-    if (!reportRef.current || !report) return;
-    try {
-      const { toPng } = await import('html-to-image');
-      const dataUrl = await toPng(reportRef.current, { 
-        cacheBust: true,
-        backgroundColor: '#f9fafb',
-        filter: (node) => node.tagName !== 'IFRAME'
+  const captureExportView = async (): Promise<string> => {
+    const { toPng } = await import('html-to-image');
+    return new Promise<string>((resolve, reject) => {
+      setIsExporting(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
+          try {
+            if (!exportRef.current) { reject(new Error("Export view not ready")); setIsExporting(false); return; }
+            const dataUrl = await toPng(exportRef.current, { cacheBust: true, backgroundColor: '#ffffff' });
+            setIsExporting(false);
+            resolve(dataUrl);
+          } catch (e) {
+            setIsExporting(false);
+            reject(e);
+          }
+        });
       });
+    });
+  };
+
+  const exportAsImage = async () => {
+    if (!report) return;
+    try {
+      const dataUrl = await captureExportView();
       const link = document.createElement('a');
       link.download = `ScoreMyStreet-${report.postcode}.png`;
       link.href = dataUrl;
@@ -167,37 +185,27 @@ export default function Report() {
   };
 
   const exportAsPDF = async () => {
-    if (!reportRef.current || !report) return;
+    if (!report) return;
     try {
-      const [{ toPng }, { jsPDF }] = await Promise.all([
-        import('html-to-image'),
+      const [dataUrl, { jsPDF }] = await Promise.all([
+        captureExportView(),
         import('jspdf'),
       ]);
-      const dataUrl = await toPng(reportRef.current, { 
-        cacheBust: true,
-        backgroundColor: '#f9fafb',
-        filter: (node) => node.tagName !== 'IFRAME'
-      });
-      
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(dataUrl);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
       const pageHeight = pdf.internal.pageSize.getHeight();
       let remainingHeight = pdfHeight;
       let position = 0;
-
       pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
       remainingHeight -= pageHeight;
-
       while (remainingHeight > 0) {
         position = remainingHeight - pdfHeight;
         pdf.addPage();
         pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
         remainingHeight -= pageHeight;
       }
-      
       pdf.save(`ScoreMyStreet-${report.postcode}.pdf`);
       toast({ title: "PDF exported!", description: "Your report has been saved as a PDF." });
     } catch (err) {
@@ -332,13 +340,13 @@ export default function Report() {
           </DialogHeader>
           <div className="space-y-6 py-4">
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="gap-2" onClick={exportAsImage}>
+              <Button variant="outline" className="gap-2" onClick={exportAsImage} disabled={isExporting}>
                 <Download className="h-4 w-4" />
-                Export Image
+                {isExporting ? "Preparing…" : "Export Image"}
               </Button>
-              <Button variant="outline" className="gap-2" onClick={exportAsPDF}>
+              <Button variant="outline" className="gap-2" onClick={exportAsPDF} disabled={isExporting}>
                 <Download className="h-4 w-4" />
-                Export PDF
+                {isExporting ? "Preparing…" : "Export PDF"}
               </Button>
             </div>
 
@@ -812,7 +820,6 @@ export default function Report() {
                     size="sm" 
                     className="bg-white hover:bg-gray-100"
                     onClick={() => {
-                      // Navigate back to home with the postcode to trigger a new search
                       setLocation(`/?postcode=${pc}`);
                     }}
                   >
@@ -824,6 +831,23 @@ export default function Report() {
           )}
         </main>
       </div>
+
+      {/* Hidden export-quality render — all sections expanded, no scroll limits */}
+      {isExporting && (
+        <div
+          ref={exportRef}
+          style={{ position: "fixed", left: -9999, top: 0, zIndex: -1, pointerEvents: "none" }}
+          aria-hidden="true"
+        >
+          <ReportExportView
+            report={report}
+            scores={scores}
+            raw={raw}
+            overallScore={overallScore}
+            safetyBreakdownItems={safetyBreakdownItems}
+          />
+        </div>
+      )}
     </div>
   );
 }

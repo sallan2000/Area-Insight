@@ -966,11 +966,16 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub || null;
       
       if (cached) {
-        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        const ninetyDaysInMs = 90 * 24 * 60 * 60 * 1000;
         const oneDayInMs = 24 * 60 * 60 * 1000;
-        const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
-        const cacheTtl = cached.partialData ? oneDayInMs : thirtyDaysInMs;
-        const isFresh = (Date.now() - lastSearchedAt) < cacheTtl;
+        let isFresh: boolean;
+        if (cached.partialData) {
+          const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
+          isFresh = (Date.now() - lastSearchedAt) < oneDayInMs;
+        } else {
+          const createdAt = cached.createdAt ? new Date(cached.createdAt).getTime() : 0;
+          isFresh = (Date.now() - createdAt) < ninetyDaysInMs;
+        }
 
         if (isFresh) {
           await Promise.all([

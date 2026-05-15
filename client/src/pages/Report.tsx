@@ -126,8 +126,10 @@ export default function Report() {
         const err = await res.json();
         throw new Error(err.message || "Refresh failed");
       }
-      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, Number(id)] });
+      const refreshed = await res.json();
+      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, refreshed.id] });
       toast({ title: "Report refreshed!", description: "Latest data has been fetched for this area." });
+      setLocation(`/report/${refreshed.id}`);
     } catch (err: any) {
       toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
     } finally {
@@ -425,11 +427,16 @@ export default function Report() {
                     {[raw.street, raw.city].filter(Boolean).join(", ")}
                   </span>
                 )}
+                {report.createdAt && (
+                  <span className="text-xs font-normal text-muted-foreground" data-testid="text-data-as-of">
+                    Data as of {new Date(report.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                )}
               </h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {(report.partialData || (isAuthenticated && report.lastSearchedAt && (Date.now() - new Date(report.lastSearchedAt).getTime()) > 24 * 60 * 60 * 1000)) && (
+            {(report.partialData || (report.createdAt && (Date.now() - new Date(report.createdAt).getTime()) > 90 * 24 * 60 * 60 * 1000)) && (
               <Button
                 variant="outline"
                 size="sm"

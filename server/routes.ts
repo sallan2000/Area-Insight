@@ -6,6 +6,7 @@ import { assessRateLimit, shareRateLimit } from "./rateLimits";
 import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { Resend } from "resend";
 
 // One-time flag: log Ofcom mobile API schema once per process to confirm field names/types.
 let ofcomMobileSchemaLogged = false;
@@ -1058,11 +1059,93 @@ export async function registerRoutes(
   app.post("/api/share", shareRateLimit, async (req, res) => {
     try {
       const data = insertShareRequestSchema.parse(req.body);
-      const shareRequest = await storage.createShareRequest(data);
       const assessment = await storage.getAssessment(data.assessmentId as number);
       if (!assessment) return res.status(404).json({ message: "Assessment not found" });
+
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({ message: "Email sending is not configured. Please add a RESEND_API_KEY secret to enable this feature." });
+      }
+
+      const resend = new Resend(apiKey);
+      const scores = assessment.scores as any;
+      const raw = assessment.rawMetrics as any;
+      const safetyExcluded = !!(raw?.crimeDataUnavailable);
+      const overallScore = Math.round(
+        safetyExcluded
+          ? (scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65))
+          : (0.25 * scores.transport) + (0.35 * Math.sqrt(scores.safety) * 10) + (0.20 * scores.schools) + (0.20 * scores.amenities)
+      );
+      const reportUrl = `${req.protocol}://${req.get('host')}/report/${assessment.id}`;
+      const dataDate = assessment.createdAt
+        ? new Date(assessment.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+        : "Unknown";
+
+      const scoreColor = (s: number) => s >= 80 ? "#10b981" : s >= 60 ? "#3b82f6" : s >= 40 ? "#eab308" : "#ef4444";
+      const scoreGrade = (s: number) => s >= 80 ? "Outstanding" : s >= 60 ? "Good" : s >= 40 ? "Average" : "Poor";
+
+      const categoryRows = [
+        { label: "🚌 Transport", score: Math.round(scores.transport) },
+        { label: "🛡️ Safety", score: safetyExcluded ? null : Math.round(scores.safety) },
+        { label: "🎓 Schools", score: Math.round(scores.schools) },
+        { label: "🛒 Amenities", score: Math.round(scores.amenities) },
+      ].map(({ label, score }) => score === null
+        ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (Scotland)</td></tr>`
+        : `<tr><td style="padding:8px 12px;color:#374151;">${label}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
+      ).join("");
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif;">
+  <div style="max-width:560px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+    <div style="background:#1e40af;padding:28px 32px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#93c5fd;text-transform:uppercase;margin-bottom:6px;">ScoreMyStreet</div>
+      <div style="font-size:28px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">${assessment.postcode}</div>
+      <div style="font-size:13px;color:#bfdbfe;margin-top:4px;">Liveability Report</div>
+    </div>
+    <div style="padding:28px 32px;">
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="font-size:56px;font-weight:900;color:${scoreColor(overallScore)};line-height:1;">${overallScore}</div>
+        <div style="font-size:14px;font-weight:700;color:${scoreColor(overallScore)};margin-top:4px;">${scoreGrade(overallScore)}</div>
+        <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Overall Liveability Score</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+        <thead>
+          <tr style="background:#f9fafb;">
+            <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Category</th>
+            <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Score</th>
+          </tr>
+        </thead>
+        <tbody>${categoryRows}</tbody>
+      </table>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:24px;">Data as of ${dataDate}</div>
+      <a href="${reportUrl}" style="display:block;background:#1e40af;color:#ffffff;text-align:center;padding:14px 24px;border-radius:10px;font-weight:700;font-size:15px;text-decoration:none;">View Full Report →</a>
+    </div>
+    <div style="padding:16px 32px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;text-align:center;">
+      Sent via ScoreMyStreet · Data from UK Police API, OpenStreetMap, DEFRA &amp; Ofcom
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const fromAddress = process.env.RESEND_FROM_EMAIL || "ScoreMyStreet <onboarding@resend.dev>";
+      const { error } = await resend.emails.send({
+        from: fromAddress,
+        to: [data.email as string],
+        subject: `Your ScoreMyStreet report for ${assessment.postcode} — ${overallScore}/100`,
+        html,
+      });
+
+      if (error) {
+        console.error("[Resend] Email send error:", error);
+        return res.status(502).json({ message: "Failed to send email. Please try again." });
+      }
+
+      const shareRequest = await storage.createShareRequest(data);
       res.status(201).json(shareRequest);
     } catch (err) {
+      console.error("[/api/share]", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

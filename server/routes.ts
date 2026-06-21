@@ -6,7 +6,6 @@ import { assessRateLimit, shareRateLimit } from "./rateLimits";
 import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { Resend } from "resend";
 
 // One-time flag: log Ofcom mobile API schema once per process to confirm field names/types.
 let ofcomMobileSchemaLogged = false;
@@ -25,32 +24,6 @@ try {
   console.log(`Loaded ${Object.keys(lsoaBandLookup).length} LSOA council tax band entries`);
 } catch (e) {
   console.error("Failed to load LSOA council tax band data:", e);
-}
-
-// Annual recorded crime rates per 10,000 population by Scottish local authority.
-// Source: Scottish Government — Recorded Crime in Scotland, 2023-24.
-// Used only as contextual reference for Scottish postcodes; does not contribute to scores.
-type ScotCrimeEntry = { name: string; rate: number };
-type ScotCrimeFile = { _meta: { year: string; scotlandAverage: number }; [key: string]: ScotCrimeEntry | { year: string; scotlandAverage: number } };
-let scotlandCrimeRateLookup: Record<string, ScotCrimeEntry> = {};
-let scotlandCrimeMeta = { year: "2023/24", scotlandAverage: 550 };
-try {
-  const basePath = join(process.cwd(), 'server', 'data', 'scotland-crime-rates.json');
-  const distPath = join(process.cwd(), 'dist', 'data', 'scotland-crime-rates.json');
-  let data: string;
-  try {
-    data = readFileSync(basePath, 'utf-8');
-  } catch {
-    data = readFileSync(distPath, 'utf-8');
-  }
-  const parsed = JSON.parse(data) as ScotCrimeFile;
-  scotlandCrimeMeta = parsed._meta as { year: string; scotlandAverage: number };
-  for (const [k, v] of Object.entries(parsed)) {
-    if (k !== '_meta') scotlandCrimeRateLookup[k] = v as ScotCrimeEntry;
-  }
-  console.log(`Loaded ${Object.keys(scotlandCrimeRateLookup).length} Scottish council crime rate entries`);
-} catch (e) {
-  console.error("Failed to load Scottish council crime rate data:", e);
 }
 
 // Modal council tax band per Scottish local authority (S12000xxx codes from postcodes.io).
@@ -419,18 +392,6 @@ function processElements(input: ProcessElementsInput) {
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
       isScotland: geoData.result.country === 'Scotland',
       crimeDataUnavailable,
-      scotCrimeContext: (() => {
-        if (!crimeDataUnavailable) return null;
-        const councilCode = geoData.result.codes?.admin_district;
-        const entry = councilCode ? scotlandCrimeRateLookup[councilCode] : null;
-        if (!entry) return null;
-        return {
-          council: entry.name,
-          ratePerThousand: Math.round(entry.rate / 10 * 10) / 10,
-          scotlandAvgPerThousand: Math.round(scotlandCrimeMeta.scotlandAverage / 10 * 10) / 10,
-          year: scotlandCrimeMeta.year
-        };
-      })(),
       overpassFailed,
       airQualityEstimated
     }
@@ -464,13 +425,14 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter"
   ];
-  // [timeout:25]: server-side execution budget. Must stay below the client-side
-  // AbortSignal.timeout(35000) so the server always responds before the client gives up.
-  // A higher value (e.g. 90) causes all mirrors to fail: the server is still processing
-  // when the 35 s client abort fires, returning nothing. The "throw on 0 elements" guard
-  // below handles cases where the server cuts the query short with an empty result.
+  // [timeout:90]: server-side execution budget — lets the Overpass server finish the query.
+  // AbortSignal.timeout(35000): client-side hard ceiling per mirror — if the server hasn't
+  // responded in 35 s we abandon it and let the other racing mirrors win.
+  // Previous [timeout:25] caused the server to cut the query short and return empty elements
+  // (no remark) which Promise.any() incorrectly accepted as a valid empty result, scoring
+  // transport/schools/amenities as 0 for all dense urban postcodes.
   const overpassQuery = `
-    [out:json][timeout:25];
+    [out:json][timeout:90];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});
@@ -935,22 +897,14 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
   const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
-
-  // When safety data is unavailable (Scotland), exclude it from the total and
-  // redistribute its 35% weight proportionally across the remaining categories:
-  //   Transport 25/65 ≈ 38.5%  |  Amenities 20/65 ≈ 30.8%  |  Schools 20/65 ≈ 30.8%
-  const safetyExcluded = !!metrics.crimeDataUnavailable;
-  const totalScore = safetyExcluded
-    ? (transportScoreFinal * (25 / 65)) + (amenitiesScoreFinal * (20 / 65)) + (schoolsScoreFinal * (20 / 65))
-    : (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
+  const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
 
   return {
     transport: Math.round(transportScoreFinal),
     safety: Math.round(safetyScoreFinal),
     amenities: Math.round(amenitiesScoreFinal),
     schools: Math.round(schoolsScoreFinal),
-    total: Math.round(totalScore),
-    safetyExcluded
+    total: Math.round(totalScore)
   };
 }
 
@@ -967,16 +921,11 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub || null;
       
       if (cached) {
-        const ninetyDaysInMs = 90 * 24 * 60 * 60 * 1000;
+        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
         const oneDayInMs = 24 * 60 * 60 * 1000;
-        let isFresh: boolean;
-        if (cached.partialData) {
-          const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
-          isFresh = (Date.now() - lastSearchedAt) < oneDayInMs;
-        } else {
-          const createdAt = cached.createdAt ? new Date(cached.createdAt).getTime() : 0;
-          isFresh = (Date.now() - createdAt) < ninetyDaysInMs;
-        }
+        const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
+        const cacheTtl = cached.partialData ? oneDayInMs : thirtyDaysInMs;
+        const isFresh = (Date.now() - lastSearchedAt) < cacheTtl;
 
         if (isFresh) {
           await Promise.all([
@@ -1059,93 +1008,11 @@ export async function registerRoutes(
   app.post("/api/share", shareRateLimit, async (req, res) => {
     try {
       const data = insertShareRequestSchema.parse(req.body);
+      const shareRequest = await storage.createShareRequest(data);
       const assessment = await storage.getAssessment(data.assessmentId as number);
       if (!assessment) return res.status(404).json({ message: "Assessment not found" });
-
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({ message: "Email sending is not configured. Please add a RESEND_API_KEY secret to enable this feature." });
-      }
-
-      const resend = new Resend(apiKey);
-      const scores = assessment.scores as any;
-      const raw = assessment.rawMetrics as any;
-      const safetyExcluded = !!(raw?.crimeDataUnavailable);
-      const overallScore = Math.round(
-        safetyExcluded
-          ? (scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65))
-          : (0.25 * scores.transport) + (0.35 * Math.sqrt(scores.safety) * 10) + (0.20 * scores.schools) + (0.20 * scores.amenities)
-      );
-      const reportUrl = `${req.protocol}://${req.get('host')}/report/${assessment.id}`;
-      const dataDate = assessment.createdAt
-        ? new Date(assessment.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-        : "Unknown";
-
-      const scoreColor = (s: number) => s >= 80 ? "#10b981" : s >= 60 ? "#3b82f6" : s >= 40 ? "#eab308" : "#ef4444";
-      const scoreGrade = (s: number) => s >= 80 ? "Outstanding" : s >= 60 ? "Good" : s >= 40 ? "Average" : "Poor";
-
-      const categoryRows = [
-        { label: "🚌 Transport", score: Math.round(scores.transport) },
-        { label: "🛡️ Safety", score: safetyExcluded ? null : Math.round(scores.safety) },
-        { label: "🎓 Schools", score: Math.round(scores.schools) },
-        { label: "🛒 Amenities", score: Math.round(scores.amenities) },
-      ].map(({ label, score }) => score === null
-        ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (Scotland)</td></tr>`
-        : `<tr><td style="padding:8px 12px;color:#374151;">${label}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
-      ).join("");
-
-      const html = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif;">
-  <div style="max-width:560px;margin:40px auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
-    <div style="background:#1e40af;padding:28px 32px;">
-      <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#93c5fd;text-transform:uppercase;margin-bottom:6px;">ScoreMyStreet</div>
-      <div style="font-size:28px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">${assessment.postcode}</div>
-      <div style="font-size:13px;color:#bfdbfe;margin-top:4px;">Liveability Report</div>
-    </div>
-    <div style="padding:28px 32px;">
-      <div style="text-align:center;margin-bottom:28px;">
-        <div style="font-size:56px;font-weight:900;color:${scoreColor(overallScore)};line-height:1;">${overallScore}</div>
-        <div style="font-size:14px;font-weight:700;color:${scoreColor(overallScore)};margin-top:4px;">${scoreGrade(overallScore)}</div>
-        <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Overall Liveability Score</div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:24px;">
-        <thead>
-          <tr style="background:#f9fafb;">
-            <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Category</th>
-            <th style="padding:8px 12px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Score</th>
-          </tr>
-        </thead>
-        <tbody>${categoryRows}</tbody>
-      </table>
-      <div style="font-size:11px;color:#9ca3af;margin-bottom:24px;">Data as of ${dataDate}</div>
-      <a href="${reportUrl}" style="display:block;background:#1e40af;color:#ffffff;text-align:center;padding:14px 24px;border-radius:10px;font-weight:700;font-size:15px;text-decoration:none;">View Full Report →</a>
-    </div>
-    <div style="padding:16px 32px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;text-align:center;">
-      Sent via ScoreMyStreet · Data from UK Police API, OpenStreetMap, DEFRA &amp; Ofcom
-    </div>
-  </div>
-</body>
-</html>`;
-
-      const fromAddress = process.env.RESEND_FROM_EMAIL || "ScoreMyStreet <onboarding@resend.dev>";
-      const { error } = await resend.emails.send({
-        from: fromAddress,
-        to: [data.email as string],
-        subject: `Your ScoreMyStreet report for ${assessment.postcode} — ${overallScore}/100`,
-        html,
-      });
-
-      if (error) {
-        console.error("[Resend] Email send error:", error);
-        return res.status(502).json({ message: "Failed to send email. Please try again." });
-      }
-
-      const shareRequest = await storage.createShareRequest(data);
       res.status(201).json(shareRequest);
     } catch (err) {
-      console.error("[/api/share]", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

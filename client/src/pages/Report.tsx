@@ -43,7 +43,6 @@ import { UserMenu } from "@/components/UserMenu";
 import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
-import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
 
@@ -127,10 +126,8 @@ export default function Report() {
         const err = await res.json();
         throw new Error(err.message || "Refresh failed");
       }
-      const refreshed = await res.json();
-      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, refreshed.id] });
+      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, Number(id)] });
       toast({ title: "Report refreshed!", description: "Latest data has been fetched for this area." });
-      setLocation(`/report/${refreshed.id}`);
     } catch (err: any) {
       toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
     } finally {
@@ -142,37 +139,20 @@ export default function Report() {
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
-  const exportRef = useRef<HTMLDivElement>(null);
 
   const reportUrl = `${window.location.origin}/report/${id}`;
 
-  const captureExportView = async (): Promise<string> => {
-    const { toPng } = await import('html-to-image');
-    return new Promise<string>((resolve, reject) => {
-      setIsExporting(true);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(async () => {
-          try {
-            if (!exportRef.current) { reject(new Error("Export view not ready")); setIsExporting(false); return; }
-            const dataUrl = await toPng(exportRef.current, { cacheBust: true, backgroundColor: '#ffffff' });
-            setIsExporting(false);
-            resolve(dataUrl);
-          } catch (e) {
-            setIsExporting(false);
-            reject(e);
-          }
-        });
-      });
-    });
-  };
-
   const exportAsImage = async () => {
-    if (!report) return;
+    if (!reportRef.current || !report) return;
     try {
-      const dataUrl = await captureExportView();
+      const { toPng } = await import('html-to-image');
+      const dataUrl = await toPng(reportRef.current, { 
+        cacheBust: true,
+        backgroundColor: '#f9fafb',
+        filter: (node) => node.tagName !== 'IFRAME'
+      });
       const link = document.createElement('a');
       link.download = `ScoreMyStreet-${report.postcode}.png`;
       link.href = dataUrl;
@@ -185,27 +165,37 @@ export default function Report() {
   };
 
   const exportAsPDF = async () => {
-    if (!report) return;
+    if (!reportRef.current || !report) return;
     try {
-      const [dataUrl, { jsPDF }] = await Promise.all([
-        captureExportView(),
+      const [{ toPng }, { jsPDF }] = await Promise.all([
+        import('html-to-image'),
         import('jspdf'),
       ]);
+      const dataUrl = await toPng(reportRef.current, { 
+        cacheBust: true,
+        backgroundColor: '#f9fafb',
+        filter: (node) => node.tagName !== 'IFRAME'
+      });
+      
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(dataUrl);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
       const pageHeight = pdf.internal.pageSize.getHeight();
       let remainingHeight = pdfHeight;
       let position = 0;
+
       pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
       remainingHeight -= pageHeight;
+
       while (remainingHeight > 0) {
         position = remainingHeight - pdfHeight;
         pdf.addPage();
         pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
         remainingHeight -= pageHeight;
       }
+      
       pdf.save(`ScoreMyStreet-${report.postcode}.pdf`);
       toast({ title: "PDF exported!", description: "Your report has been saved as a PDF." });
     } catch (err) {
@@ -278,11 +268,11 @@ export default function Report() {
     return "Poor";
   };
 
-  const safetyExcluded = !!(raw?.crimeDataUnavailable);
   const overallScore = Math.round(
-    safetyExcluded
-      ? (scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65))
-      : (0.25 * scores.transport) + (0.35 * Math.sqrt(scores.safety) * 10) + (0.20 * scores.schools) + (0.20 * scores.amenities)
+    (0.25 * scores.transport) + 
+    (0.35 * Math.sqrt(scores.safety) * 10) + 
+    (0.20 * scores.schools) + 
+    (0.20 * scores.amenities)
   );
 
   const copyToClipboard = () => {
@@ -340,13 +330,13 @@ export default function Report() {
           </DialogHeader>
           <div className="space-y-6 py-4">
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="gap-2" onClick={exportAsImage} disabled={isExporting}>
+              <Button variant="outline" className="gap-2" onClick={exportAsImage}>
                 <Download className="h-4 w-4" />
-                {isExporting ? "Preparing…" : "Export Image"}
+                Export Image
               </Button>
-              <Button variant="outline" className="gap-2" onClick={exportAsPDF} disabled={isExporting}>
+              <Button variant="outline" className="gap-2" onClick={exportAsPDF}>
                 <Download className="h-4 w-4" />
-                {isExporting ? "Preparing…" : "Export PDF"}
+                Export PDF
               </Button>
             </div>
 
@@ -435,16 +425,11 @@ export default function Report() {
                     {[raw.street, raw.city].filter(Boolean).join(", ")}
                   </span>
                 )}
-                {report.createdAt && (
-                  <span className="text-xs font-normal text-muted-foreground" data-testid="text-data-as-of">
-                    Data as of {new Date(report.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                  </span>
-                )}
               </h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {(report.partialData || (report.createdAt && (Date.now() - new Date(report.createdAt).getTime()) > 90 * 24 * 60 * 60 * 1000)) && (
+            {(report.partialData || (isAuthenticated && report.lastSearchedAt && (Date.now() - new Date(report.lastSearchedAt).getTime()) > 24 * 60 * 60 * 1000)) && (
               <Button
                 variant="outline"
                 size="sm"
@@ -480,31 +465,17 @@ export default function Report() {
                   <div className="space-y-3">
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Calculation</p>
                     <div className="bg-gray-50 rounded-lg p-3 border border-border">
-                      {safetyExcluded ? (
-                        <p className="text-sm font-mono text-foreground leading-relaxed break-words">
-                          <span className="text-primary font-bold">0.38</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
-                          <span className="text-primary font-bold"> 0.31</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
-                          <span className="text-primary font-bold"> 0.31</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
-                          <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
-                        </p>
-                      ) : (
-                        <p className="text-sm font-mono text-foreground leading-relaxed break-words">
-                          <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
-                          <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
-                          <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
-                          <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
-                          <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
-                        </p>
-                      )}
-                    </div>
-                    {safetyExcluded && (
-                      <p className="text-[10px] text-amber-600 font-medium text-center pt-1">
-                        Safety excluded — crime data not available in Scotland
+                      <p className="text-sm font-mono text-foreground leading-relaxed break-words">
+                        <span className="text-primary font-bold">0.25</span>({Math.round(scores.transport)}<span className="text-[10px] text-muted-foreground ml-1">Tr</span>) + 
+                        <span className="text-primary font-bold"> 0.35</span>√({Math.round(scores.safety)}<span className="text-[10px] text-muted-foreground ml-1">Sa</span>) + 
+                        <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.schools)}<span className="text-[10px] text-muted-foreground ml-1">Sc</span>) + 
+                        <span className="text-primary font-bold"> 0.20</span>({Math.round(scores.amenities)}<span className="text-[10px] text-muted-foreground ml-1">Am</span>) = 
+                        <span className="ml-2 font-bold text-lg text-primary">{overallScore}</span>
                       </p>
-                    )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground font-medium uppercase pt-1">
                       <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> Tr: Transport</div>
-                      <div className={`flex items-center gap-1.5 ${safetyExcluded ? "opacity-40 line-through" : ""}`}><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
+                      <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Sa: Safety</div>
                       <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Sc: Schools</div>
                       <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Am: Amenities</div>
                     </div>
@@ -618,36 +589,32 @@ export default function Report() {
               <div className="p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-6">
-                    {!(activeTab === 'safety' && raw.crimeDataUnavailable) && (
-                      <div className="p-6 bg-gray-50 rounded-xl border border-border">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
-                          <span className="text-2xl font-bold text-primary">
-                            {activeTab ? Math.round(scores[activeTab]) : 0}/100
-                          </span>
-                        </div>
-                        <div className="prose prose-sm text-muted-foreground">
-                          <p>
-                            The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
-                          </p>
-                        </div>
+                    <div className="p-6 bg-gray-50 rounded-xl border border-border">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Category Score</h4>
+                        <span className="text-2xl font-bold text-primary">
+                          {activeTab === 'safety' && raw.crimeDataUnavailable ? "N/A" : `${activeTab ? Math.round(scores[activeTab]) : 0}/100`}
+                        </span>
                       </div>
-                    )}
-
-                    {!(activeTab === 'safety' && raw.crimeDataUnavailable) && (
-                      <div className="space-y-4">
-                        <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
-                        <div className="p-4 bg-gray-50 rounded-xl border border-border">
-                          <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
-                          <p className="text-xl font-bold text-foreground">
-                            {activeTab === 'safety' ? `${raw.crimeCount} incidents` :
-                             activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` :
-                             activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` :
-                             `${raw.amenities?.totalCount || 0} local services`}
-                          </p>
-                        </div>
+                      <div className="prose prose-sm text-muted-foreground">
+                        <p>
+                          The rating is calculated based on proximity, quantity, and quality of local services relative to national averages.
+                        </p>
                       </div>
-                    )}
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <h4 className="font-semibold text-foreground text-sm uppercase tracking-wide">Key Statistics</h4>
+                      <div className="p-4 bg-gray-50 rounded-xl border border-border">
+                        <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
+                        <p className="text-xl font-bold text-foreground">
+                          {activeTab === 'safety' ? (raw.crimeDataUnavailable ? "No data" : `${raw.crimeCount} incidents`) : 
+                           activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` : 
+                           activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` : 
+                           `${raw.amenities?.totalCount || 0} local services`}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
@@ -657,35 +624,11 @@ export default function Report() {
                         {activeTab === 'safety' && (
                           <div className="space-y-6">
                             {raw.crimeDataUnavailable && (
-                              <div className="space-y-3">
-                                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                                  <h5 className="text-sm font-bold text-amber-800 mb-1">Street-level crime data unavailable</h5>
-                                  <p className="text-xs text-amber-700">
-                                    Police Scotland does not publish street-level crime statistics through the national police.uk API. Safety is excluded from the liveability score for Scottish postcodes.
-                                  </p>
-                                </div>
-                                {raw.scotCrimeContext && (
-                                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200" data-testid="scot-crime-context">
-                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                      <h5 className="text-sm font-bold text-blue-800">Council Area Context</h5>
-                                      <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full whitespace-nowrap">Reference only</span>
-                                    </div>
-                                    <p className="text-xs text-blue-800 mb-3">
-                                      In {raw.scotCrimeContext.year}, <span className="font-semibold">{raw.scotCrimeContext.council}</span> recorded{" "}
-                                      <span className="font-bold">{raw.scotCrimeContext.ratePerThousand} crimes per 1,000 residents</span>{" "}
-                                      (Scotland average: {raw.scotCrimeContext.scotlandAvgPerThousand} per 1,000).
-                                    </p>
-                                    <div className="w-full bg-blue-100 rounded-full h-1.5 mb-1">
-                                      <div
-                                        className="bg-blue-400 h-1.5 rounded-full"
-                                        style={{ width: `${Math.min(100, (raw.scotCrimeContext.ratePerThousand / 100) * 100)}%` }}
-                                      />
-                                    </div>
-                                    <p className="text-[10px] text-blue-600 mt-2">
-                                      ⚠ This covers the entire {raw.scotCrimeContext.council} council area and is not specific to this postcode. It does not contribute to the liveability score. Source: Scottish Government, {raw.scotCrimeContext.year}.
-                                    </p>
-                                  </div>
-                                )}
+                              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                                <h5 className="text-sm font-bold text-amber-800 mb-1">Crime data unavailable</h5>
+                                <p className="text-xs text-amber-700">
+                                  Police Scotland does not publish crime statistics through the national police.uk API used by ScoreMyStreet. No crime figures are available for Scottish postcodes.
+                                </p>
                               </div>
                             )}
                             {raw.neighbourhood && (
@@ -820,6 +763,7 @@ export default function Report() {
                     size="sm" 
                     className="bg-white hover:bg-gray-100"
                     onClick={() => {
+                      // Navigate back to home with the postcode to trigger a new search
                       setLocation(`/?postcode=${pc}`);
                     }}
                   >
@@ -831,23 +775,6 @@ export default function Report() {
           )}
         </main>
       </div>
-
-      {/* Hidden export-quality render — all sections expanded, no scroll limits */}
-      {isExporting && (
-        <div
-          ref={exportRef}
-          style={{ position: "fixed", left: -9999, top: 0, zIndex: -1, pointerEvents: "none" }}
-          aria-hidden="true"
-        >
-          <ReportExportView
-            report={report}
-            scores={scores}
-            raw={raw}
-            overallScore={overallScore}
-            safetyBreakdownItems={safetyBreakdownItems}
-          />
-        </div>
-      )}
     </div>
   );
 }

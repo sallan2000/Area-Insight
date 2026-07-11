@@ -84,6 +84,16 @@ export default function Compare() {
       return;
     }
 
+    const normalise = (pc: string) => pc.replace(/\s+/g, "").toUpperCase();
+    if (normalise(cleanPc1) === normalise(cleanPc2)) {
+      toast({
+        title: "Same postcode entered twice",
+        description: "Please enter two different postcodes to compare.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Validate both postcodes exist before hitting the backend
     setIsValidating(true);
     try {

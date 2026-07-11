@@ -21,7 +21,9 @@ import {
   ShoppingCart,
   ShoppingBag,
   Building2,
-  Zap
+  Zap,
+  FlaskConical,
+  AlertTriangle
 } from "lucide-react";
 import { 
   Dialog,
@@ -416,8 +418,8 @@ export default function Compare() {
                         if (m?.fourG) return `4G: ${m.fourG}`;
                         return 'N/A';
                       }},
-                      { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A' },
-                      { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A' },
+                      { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A', getFlags: (r: any) => ({ airQualityEstimated: !!r?.airQualityEstimated }) },
+                      { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A', getFlags: (r: any) => ({ overpassFailed: !!r?.overpassFailed }) },
                       { name: 'Flood Risk', key: 'flood', icon: Waves, type: 'text', getValue: (r: any) => r?.environment?.floodRisk ? `${r.environment.floodRisk.likelihood}${r.environment.floodRisk.station?.river ? ` — ${r.environment.floodRisk.station.river}` : ''}` : 'N/A' },
                       { name: 'Nearest EV Charger', key: 'evCharger', icon: Zap, type: 'text', getValue: (r: any) => {
                         if (!r?.evChargers?.length) return 'N/A';
@@ -430,6 +432,8 @@ export default function Compare() {
                       const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);
                       const val2 = cat.type === 'score' ? report2Scores[cat.key] : cat.getValue?.(raw2);
                       const win = cat.type === 'score' ? getWinner(val1, val2) : 0;
+                      const flags1: Record<string, boolean | undefined> = cat.getFlags?.(raw1) ?? {};
+                      const flags2: Record<string, boolean | undefined> = cat.getFlags?.(raw2) ?? {};
 
                       return (
                         <tr key={cat.name} className="hover:bg-gray-50/50 transition-colors">
@@ -440,10 +444,54 @@ export default function Compare() {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : (win === 2 ? 'text-red-600' : '')}`}>{val1}</span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : (win === 2 ? 'text-red-600' : '')}`}>{val1}</span>
+                              {flags1.airQualityEstimated && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-air-quality-estimated-1`}
+                                  title="Air quality is estimated using a location-based heuristic. No nearby DEFRA monitoring station was available."
+                                >
+                                  <FlaskConical className="w-3 h-3" />
+                                  Estimated
+                                </span>
+                              )}
+                              {flags1.overpassFailed && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-overpass-failed-1`}
+                                  title="Map data unavailable — noise estimate uses reduced road/rail proximity data and may be less accurate."
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Reduced data
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : (win === 1 ? 'text-red-600' : '')}`}>{val2}</span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : (win === 1 ? 'text-red-600' : '')}`}>{val2}</span>
+                              {flags2.airQualityEstimated && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-air-quality-estimated-2`}
+                                  title="Air quality is estimated using a location-based heuristic. No nearby DEFRA monitoring station was available."
+                                >
+                                  <FlaskConical className="w-3 h-3" />
+                                  Estimated
+                                </span>
+                              )}
+                              {flags2.overpassFailed && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-overpass-failed-2`}
+                                  title="Map data unavailable — noise estimate uses reduced road/rail proximity data and may be less accurate."
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Reduced data
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

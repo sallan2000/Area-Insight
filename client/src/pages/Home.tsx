@@ -41,7 +41,7 @@ export default function Home() {
     setIsValidating(true);
     try {
       const res = await fetch(
-        `https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPostcode)}`
+        `/api/postcodes/${encodeURIComponent(cleanPostcode)}/validate`
       );
       if (!res.ok) {
         toast({

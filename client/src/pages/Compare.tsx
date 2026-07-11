@@ -106,8 +106,8 @@ export default function Compare() {
     setIsValidating(true);
     try {
       const [res1, res2] = await Promise.all([
-        fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPc1)}`),
-        fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPc2)}`)
+        fetch(`/api/postcodes/${encodeURIComponent(cleanPc1)}/validate`),
+        fetch(`/api/postcodes/${encodeURIComponent(cleanPc2)}/validate`)
       ]);
       if (!res1.ok && !res2.ok) {
         toast({

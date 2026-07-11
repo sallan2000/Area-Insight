@@ -915,6 +915,25 @@ export async function registerRoutes(
 ): Promise<Server> {
   const UK_POSTCODE_REGEX = /^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$/i;
 
+  app.get("/api/postcodes/:postcode/validate", async (req, res) => {
+    const raw = req.params.postcode?.trim().toUpperCase();
+    if (!raw || !UK_POSTCODE_REGEX.test(raw)) {
+      return res.status(422).json({ valid: false, message: "Invalid UK postcode format." });
+    }
+    try {
+      const upstream = await fetch(
+        `https://api.postcodes.io/postcodes/${encodeURIComponent(raw)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (!upstream.ok) {
+        return res.status(404).json({ valid: false, message: "Postcode not found." });
+      }
+      return res.json({ valid: true });
+    } catch {
+      return res.status(502).json({ valid: false, message: "Unable to verify postcode." });
+    }
+  });
+
   app.post(api.assess.create.path, assessRateLimit, async (req, res) => {
     try {
       const { postcode } = api.assess.create.input.parse(req.body);

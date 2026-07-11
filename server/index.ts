@@ -65,7 +65,7 @@ const helmetMiddleware = helmet({
         "https://*.tile.openstreetmap.org",
         "https://unpkg.com",
       ],
-      connectSrc: ["'self'", "https://api.postcodes.io"],
+      connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],

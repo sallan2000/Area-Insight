@@ -1,0 +1,1 @@
+- [Recurring rebase conflict fix](rebase-conflict-fix.md) — task merges re-trigger a rebase that puts conflict markers in Report.tsx; fix via Node.js child_process, not bash.

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
-import { assessRateLimit, shareRateLimit } from "./rateLimits";
+import { assessRateLimit, shareRateLimit, checkRefreshCooldown } from "./rateLimits";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { z } from "zod";
 import { readFileSync } from "fs";
@@ -976,6 +976,15 @@ export async function registerRoutes(
       if (!userId) return res.status(401).json({ message: "You must be signed in to refresh a report." });
 
       const token = req.params.token;
+      const cooldown = checkRefreshCooldown(token);
+      if (!cooldown.allowed) {
+        const minutesLeft = Math.ceil(cooldown.retryAfterMs / 60000);
+        return res.status(429).json({
+          message: `This report was refreshed recently. Please wait ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""} before refreshing again.`,
+          retryAfterMs: cooldown.retryAfterMs,
+        });
+      }
+
       const existing = await storage.getAssessmentByToken(token);
       if (!existing) return res.status(404).json({ message: "Assessment not found" });
 

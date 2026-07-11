@@ -129,7 +129,12 @@ export default function Report() {
       await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, token] });
       toast({ title: "Report refreshed!", description: "Latest data has been fetched for this area." });
     } catch (err: any) {
-      toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
+      const isRateLimited = err.message?.toLowerCase().includes("refreshed recently") || err.message?.toLowerCase().includes("please wait");
+      toast({
+        title: isRateLimited ? "Refreshed recently" : "Refresh failed",
+        description: err.message,
+        variant: "destructive",
+      });
     } finally {
       setIsRefreshing(false);
     }

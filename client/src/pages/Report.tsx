@@ -671,10 +671,9 @@ export default function Report() {
                               <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
                                 <h5 className="text-sm font-bold text-primary mb-1">Police Neighbourhood: {raw.neighbourhood.name}</h5>
                                 {raw.neighbourhood.description && (
-                                  <div 
-                                    className="text-xs text-muted-foreground line-clamp-3"
-                                    dangerouslySetInnerHTML={{ __html: raw.neighbourhood.description }}
-                                  />
+                                  <p className="text-xs text-muted-foreground line-clamp-3">
+                                    {raw.neighbourhood.description.replace(/<[^>]*>/g, '')}
+                                  </p>
                                 )}
                               </div>
                             )}

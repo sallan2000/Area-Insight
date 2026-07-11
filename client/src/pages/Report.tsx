@@ -21,7 +21,8 @@ import {
   Building2,
   RefreshCw,
 } from "lucide-react";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useId } from "react";
+import { setRule, removeRule } from "@/lib/dynamic-styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
@@ -46,6 +47,15 @@ import { EvChargersSection } from "@/components/report/EvChargersSection";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
 
+
+function CrimeBar({ pct, color }: { pct: number; color: string }) {
+  const uid = useId().replace(/:/g, "");
+  useEffect(() => {
+    setRule(`crime-bar-${uid}`, `[data-bar-id="${uid}"] { width: ${pct}%; }`);
+    return () => removeRule(`crime-bar-${uid}`);
+  }, [uid, pct]);
+  return <div data-bar-id={uid} className={`${color} h-1.5 rounded-full`} />;
+}
 
 export default function Report() {
   const { id: token } = useParams();
@@ -656,9 +666,9 @@ export default function Report() {
                                       <span>{item.value}</span>
                                     </div>
                                     <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                      <div 
-                                        className={`${item.color} h-1.5 rounded-full`} 
-                                        style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                      <CrimeBar
+                                        pct={Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}
+                                        color={item.color}
                                       />
                                     </div>
                                   </div>

@@ -37,7 +37,41 @@ export function log(message: string, source = "express") {
 
 // Security headers — apply to all routes in production, only /api in dev
 const helmetMiddleware = helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "https://unpkg.com",
+      ],
+      styleSrc: [
+        "'self'",
+        "https://fonts.googleapis.com",
+        "https://unpkg.com",
+      ],
+      styleSrcElem: [
+        "'self'",
+        "https://fonts.googleapis.com",
+        "https://unpkg.com",
+      ],
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com",
+        "data:",
+      ],
+      imgSrc: [
+        "'self'",
+        "data:",
+        "https://*.tile.openstreetmap.org",
+        "https://unpkg.com",
+      ],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+    },
+  },
 });
 
 if (process.env.NODE_ENV === "production") {

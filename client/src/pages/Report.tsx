@@ -467,6 +467,27 @@ export default function Report() {
       </header>
       <div ref={reportRef} className="bg-gray-50">
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+          {/* Data Quality Banner */}
+          {(raw.airQualityEstimated || raw.overpassFailed) && (
+            <div
+              className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800"
+              data-testid="banner-data-quality"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <div className="space-y-0.5">
+                <p className="font-semibold">Some data in this report is estimated</p>
+                <p className="text-xs text-amber-700 leading-snug">
+                  {[
+                    raw.airQualityEstimated && "Air quality index uses a location-based heuristic (no DEFRA monitoring station nearby).",
+                    raw.overpassFailed && "Map data was temporarily unavailable — transport, schools, amenities, and noise scores may be lower than usual.",
+                  ].filter(Boolean).join(" ")}
+                  {" "}Refresh the report to try fetching live data.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Map Section */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Score Card */}
@@ -755,7 +776,11 @@ export default function Report() {
 
           {/* Environment Section */}
           {raw.environment && (
-            <EnvironmentSection environment={raw.environment} />
+            <EnvironmentSection
+              environment={raw.environment}
+              airQualityEstimated={raw.airQualityEstimated}
+              overpassFailed={raw.overpassFailed}
+            />
           )}
 
           {raw.connectivity && (

@@ -52,12 +52,12 @@ export default function Compare() {
     const params = new URLSearchParams(window.location.search);
     return params.get('pc2') || "";
   });
-  const [ids, setIds] = useState<{id1?: number, id2?: number}>({});
+  const [ids, setIds] = useState<{id1?: string, id2?: string}>({});
   const [isCreating, setIsCreating] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
-  const { data: report1 } = useAssessment(ids.id1!);
-  const { data: report2 } = useAssessment(ids.id2!);
+  const { data: report1 } = useAssessment(ids.id1);
+  const { data: report2 } = useAssessment(ids.id2);
 
   const handleCompare = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,7 +109,7 @@ export default function Compare() {
         throw new Error(data1.message || data2.message || "Failed to fetch one or both postcodes");
       }
 
-      setIds({ id1: data1.id, id2: data2.id });
+      setIds({ id1: data1.shareToken, id2: data2.shareToken });
     } catch (error: any) {
       toast({
         title: "Comparison failed",

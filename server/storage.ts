@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { db } from "./db";
 import {
   assessments,
@@ -13,6 +14,7 @@ import { eq, desc } from "drizzle-orm";
 export interface IStorage {
   createAssessment(assessment: InsertAssessment, existingId?: number): Promise<Assessment>;
   getAssessment(id: number): Promise<Assessment | undefined>;
+  getAssessmentByToken(token: string): Promise<Assessment | undefined>;
   getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined>;
   recordUserSearch(userId: string, assessmentId: number): Promise<void>;
   getAssessmentsByUser(userId: string): Promise<Assessment[]>;
@@ -39,7 +41,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const [assessment] = await db.insert(assessments)
-      .values(insertAssessment)
+      .values({ ...insertAssessment, shareToken: randomUUID() })
       .returning();
     return assessment;
   }
@@ -48,6 +50,13 @@ export class DatabaseStorage implements IStorage {
     const [assessment] = await db.select()
       .from(assessments)
       .where(eq(assessments.id, id));
+    return assessment;
+  }
+
+  async getAssessmentByToken(token: string): Promise<Assessment | undefined> {
+    const [assessment] = await db.select()
+      .from(assessments)
+      .where(eq(assessments.shareToken, token));
     return assessment;
   }
 

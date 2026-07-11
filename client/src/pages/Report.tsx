@@ -48,9 +48,9 @@ import { api } from "@shared/routes";
 
 
 export default function Report() {
-  const { id } = useParams();
+  const { id: token } = useParams();
   const [, setLocation] = useLocation();
-  const { data: report, isLoading, error } = useAssessment(Number(id));
+  const { data: report, isLoading, error } = useAssessment(token);
   const { isAuthenticated } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
@@ -121,12 +121,12 @@ export default function Report() {
     if (!report) return;
     setIsRefreshing(true);
     try {
-      const res = await apiRequest("POST", `/api/assess/${id}/refresh`, {});
+      const res = await apiRequest("POST", `/api/assess/token/${token}/refresh`, {});
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || "Refresh failed");
       }
-      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, Number(id)] });
+      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, token] });
       toast({ title: "Report refreshed!", description: "Latest data has been fetched for this area." });
     } catch (err: any) {
       toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
@@ -142,7 +142,7 @@ export default function Report() {
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const reportUrl = `${window.location.origin}/report/${id}`;
+  const reportUrl = `${window.location.origin}/report/${token}`;
 
   const exportAsImage = async () => {
     if (!reportRef.current || !report) return;
@@ -292,7 +292,7 @@ export default function Report() {
     setIsSending(true);
     try {
       const res = await apiRequest("POST", "/api/share", {
-        assessmentId: Number(id),
+        assessmentId: report?.id,
         email
       });
 

@@ -957,16 +957,18 @@ export async function registerRoutes(
   });
 
   app.get(api.assess.get.path, async (req, res) => {
-    const assessment = await storage.getAssessment(Number(req.params.id));
+    const assessment = await storage.getAssessmentByToken(req.params.token);
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     res.json(assessment);
   });
 
-  app.post("/api/assess/:id/refresh", assessRateLimit, async (req, res) => {
+  app.post("/api/assess/token/:token/refresh", assessRateLimit, async (req, res) => {
     try {
-      const id = Number(req.params.id);
-      if (isNaN(id)) return res.status(400).json({ message: "Invalid assessment ID" });
-      const existing = await storage.getAssessment(id);
+      const userId = (req.user as any)?.claims?.sub || null;
+      if (!userId) return res.status(401).json({ message: "You must be signed in to refresh a report." });
+
+      const token = req.params.token;
+      const existing = await storage.getAssessmentByToken(token);
       if (!existing) return res.status(404).json({ message: "Assessment not found" });
 
       const data = await fetchAreaMetrics(existing.postcode);
@@ -979,12 +981,9 @@ export async function registerRoutes(
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
         scores,
         partialData
-      }, id);
+      }, existing.id);
 
-      const userId = (req.user as any)?.claims?.sub || null;
-      if (userId) {
-        await storage.recordUserSearch(userId, id);
-      }
+      await storage.recordUserSearch(userId, existing.id);
 
       res.json(updated);
     } catch (e: any) {

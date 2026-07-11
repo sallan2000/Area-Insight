@@ -30,7 +30,7 @@ export const api = {
     },
     get: {
       method: 'GET' as const,
-      path: '/api/assess/:id',
+      path: '/api/assess/token/:token',
       responses: {
         200: z.custom<typeof assessments.$inferSelect>(),
         404: errorSchemas.notFound,

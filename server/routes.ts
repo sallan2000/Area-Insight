@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
-import { assessRateLimit, shareRateLimit } from "./rateLimits";
+import { assessRateLimit, shareRateLimit, REFRESH_COOLDOWN_MS } from "./rateLimits";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { z } from "zod";
 import { readFileSync } from "fs";
@@ -942,6 +942,17 @@ export async function registerRoutes(
           ]);
           return res.status(200).json(cached);
         }
+
+        if (cached.lastRefreshedAt) {
+          const elapsed = Date.now() - new Date(cached.lastRefreshedAt).getTime();
+          if (elapsed < REFRESH_COOLDOWN_MS) {
+            await Promise.all([
+              storage.updateLastSearchedAt(cached.id),
+              userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
+            ]);
+            return res.status(200).json(cached);
+          }
+        }
       }
 
       const data = await fetchAreaMetrics(cleanPostcode);
@@ -972,7 +983,6 @@ export async function registerRoutes(
 
   app.post("/api/assess/token/:token/refresh", assessRateLimit, async (req, res) => {
     try {
-      const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
       const userId = (req.user as any)?.claims?.sub || null;
       if (!userId) return res.status(401).json({ message: "You must be signed in to refresh a report." });
 

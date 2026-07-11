@@ -1,6 +1,6 @@
 import rateLimit from "express-rate-limit";
 
-const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
+export const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
 const refreshCooldownStore = new Map<string, number>();
 
 export function checkRefreshCooldown(token: string): { allowed: boolean; retryAfterMs: number } {

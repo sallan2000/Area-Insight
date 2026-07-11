@@ -1080,16 +1080,22 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/admin/refresh-partial", requireAdmin, async (_req, res) => {
+  app.post("/api/admin/refresh-partial", requireAdmin, async (req, res) => {
     try {
-      const partials = await storage.getPartialAssessments();
-      if (partials.length === 0) {
-        return res.json({ message: "No partial assessments found.", refreshed: 0, failed: 0, results: [] });
+      const rawLimit = req.query.limit;
+      const limit = rawLimit !== undefined ? Math.max(1, parseInt(String(rawLimit), 10) || 1) : undefined;
+
+      const allPartials = await storage.getPartialAssessments();
+      if (allPartials.length === 0) {
+        return res.json({ message: "No partial assessments found.", refreshed: 0, failed: 0, remaining: 0, results: [] });
       }
+
+      const batch = limit !== undefined ? allPartials.slice(0, limit) : allPartials;
+      const remaining = allPartials.length - batch.length;
 
       const results: Array<{ id: number; postcode: string; status: string; error?: string }> = [];
 
-      for (const assessment of partials) {
+      for (const assessment of batch) {
         try {
           const data = await fetchAreaMetrics(assessment.postcode);
           const scores = calculateScores(data.metrics, data.metrics.isScotland);
@@ -1115,8 +1121,11 @@ export async function registerRoutes(
       const refreshed = results.filter(r => r.status === "refreshed").length;
       const stillPartial = results.filter(r => r.status === "still-partial").length;
       const failed = results.filter(r => r.status === "failed").length;
+      const message = remaining > 0
+        ? `Batch complete. ${remaining} partial assessment(s) still queued — call again to continue.`
+        : "Bulk refresh complete.";
 
-      res.json({ message: "Bulk refresh complete.", refreshed, stillPartial, failed, results });
+      res.json({ message, refreshed, stillPartial, failed, remaining, results });
     } catch (err) {
       res.status(500).json({ message: "Bulk refresh failed." });
     }

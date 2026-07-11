@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
-import { assessRateLimit, shareRateLimit, checkRefreshCooldown } from "./rateLimits";
+import { assessRateLimit, shareRateLimit } from "./rateLimits";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { z } from "zod";
 import { readFileSync } from "fs";
@@ -972,21 +972,26 @@ export async function registerRoutes(
 
   app.post("/api/assess/token/:token/refresh", assessRateLimit, async (req, res) => {
     try {
+      const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
       const userId = (req.user as any)?.claims?.sub || null;
       if (!userId) return res.status(401).json({ message: "You must be signed in to refresh a report." });
 
       const token = req.params.token;
-      const cooldown = checkRefreshCooldown(token);
-      if (!cooldown.allowed) {
-        const minutesLeft = Math.ceil(cooldown.retryAfterMs / 60000);
-        return res.status(429).json({
-          message: `This report was refreshed recently. Please wait ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""} before refreshing again.`,
-          retryAfterMs: cooldown.retryAfterMs,
-        });
-      }
-
       const existing = await storage.getAssessmentByToken(token);
       if (!existing) return res.status(404).json({ message: "Assessment not found" });
+
+      const now = Date.now();
+      if (existing.lastRefreshedAt) {
+        const elapsed = now - existing.lastRefreshedAt.getTime();
+        if (elapsed < REFRESH_COOLDOWN_MS) {
+          const retryAfterMs = REFRESH_COOLDOWN_MS - elapsed;
+          const minutesLeft = Math.ceil(retryAfterMs / 60000);
+          return res.status(429).json({
+            message: `This report was refreshed recently. Please wait ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""} before refreshing again.`,
+            retryAfterMs,
+          });
+        }
+      }
 
       const data = await fetchAreaMetrics(existing.postcode);
       const scores = calculateScores(data.metrics, data.metrics.isScotland);
@@ -998,7 +1003,7 @@ export async function registerRoutes(
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
         scores,
         partialData
-      }, existing.id);
+      }, existing.id, true);
 
       await storage.recordUserSearch(userId, existing.id);
 

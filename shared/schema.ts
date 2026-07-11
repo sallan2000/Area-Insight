@@ -18,6 +18,7 @@ export const assessments = pgTable("assessments", {
   userId: varchar("user_id"),
   createdAt: timestamp("created_at").defaultNow(),
   lastSearchedAt: timestamp("last_searched_at").defaultNow(),
+  lastRefreshedAt: timestamp("last_refreshed_at"),
   partialData: boolean("partial_data").default(false),
 }, (table) => [
   index("assessments_postcode_idx").on(table.postcode),

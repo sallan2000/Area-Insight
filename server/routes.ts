@@ -1033,5 +1033,79 @@ export async function registerRoutes(
     }
   });
 
+  function requireAdmin(req: any, res: any, next: any) {
+    const adminSecret = process.env.ADMIN_SECRET;
+    if (!adminSecret) {
+      return res.status(403).json({ message: "Admin access is not configured on this server." });
+    }
+    const auth = req.headers["authorization"] || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (token !== adminSecret) {
+      return res.status(401).json({ message: "Invalid or missing admin secret." });
+    }
+    next();
+  }
+
+  app.get("/api/admin/partial-assessments", requireAdmin, async (_req, res) => {
+    try {
+      const partials = await storage.getPartialAssessments();
+      res.json({
+        count: partials.length,
+        assessments: partials.map(a => ({
+          id: a.id,
+          postcode: a.postcode,
+          partialData: a.partialData,
+          lastSearchedAt: a.lastSearchedAt,
+          createdAt: a.createdAt,
+          shareToken: a.shareToken,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to list partial assessments." });
+    }
+  });
+
+  app.post("/api/admin/refresh-partial", requireAdmin, async (_req, res) => {
+    try {
+      const partials = await storage.getPartialAssessments();
+      if (partials.length === 0) {
+        return res.json({ message: "No partial assessments found.", refreshed: 0, failed: 0, results: [] });
+      }
+
+      const results: Array<{ id: number; postcode: string; status: string; error?: string }> = [];
+
+      for (const assessment of partials) {
+        try {
+          const data = await fetchAreaMetrics(assessment.postcode);
+          const scores = calculateScores(data.metrics, data.metrics.isScotland);
+          const partialData = data.overpassFailed || false;
+          await storage.createAssessment(
+            {
+              postcode: assessment.postcode,
+              lat: data.lat,
+              lng: data.lng,
+              rawMetrics: { ...data.metrics, street: data.street, city: data.city },
+              scores,
+              partialData,
+            },
+            assessment.id
+          );
+          results.push({ id: assessment.id, postcode: assessment.postcode, status: partialData ? "still-partial" : "refreshed" });
+        } catch (err: any) {
+          results.push({ id: assessment.id, postcode: assessment.postcode, status: "failed", error: err.message || "Unknown error" });
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      const refreshed = results.filter(r => r.status === "refreshed").length;
+      const stillPartial = results.filter(r => r.status === "still-partial").length;
+      const failed = results.filter(r => r.status === "failed").length;
+
+      res.json({ message: "Bulk refresh complete.", refreshed, stillPartial, failed, results });
+    } catch (err) {
+      res.status(500).json({ message: "Bulk refresh failed." });
+    }
+  });
+
   return httpServer;
 }

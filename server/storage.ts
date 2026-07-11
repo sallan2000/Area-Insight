@@ -16,6 +16,7 @@ export interface IStorage {
   getAssessment(id: number): Promise<Assessment | undefined>;
   getAssessmentByToken(token: string): Promise<Assessment | undefined>;
   getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined>;
+  getPartialAssessments(): Promise<Assessment[]>;
   recordUserSearch(userId: string, assessmentId: number): Promise<void>;
   getAssessmentsByUser(userId: string): Promise<Assessment[]>;
   updateLastSearchedAt(id: number): Promise<void>;
@@ -66,6 +67,13 @@ export class DatabaseStorage implements IStorage {
       .where(eq(assessments.postcode, postcode))
       .limit(1);
     return assessment;
+  }
+
+  async getPartialAssessments(): Promise<Assessment[]> {
+    return db.select()
+      .from(assessments)
+      .where(eq(assessments.partialData, true))
+      .orderBy(desc(assessments.lastSearchedAt));
   }
 
   async recordUserSearch(userId: string, assessmentId: number): Promise<void> {

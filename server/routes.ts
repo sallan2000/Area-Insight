@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
 import { assessRateLimit, shareRateLimit } from "./rateLimits";
+import { isAuthenticated } from "./replit_integrations/auth";
 import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -991,7 +992,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/my-assessments", async (req, res) => {
+  app.get("/api/my-assessments", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });

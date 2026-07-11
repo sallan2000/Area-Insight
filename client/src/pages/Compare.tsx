@@ -321,6 +321,7 @@ export default function Compare() {
                   className="w-full pl-9 pr-4 py-2 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
                   value={pc1}
                   onChange={(e) => setPc1(e.target.value.toUpperCase())}
+                  data-testid="input-postcode1"
                 />
               </div>
             </div>

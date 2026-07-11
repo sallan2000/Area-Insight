@@ -913,10 +913,17 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  const UK_POSTCODE_REGEX = /^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$/i;
+
   app.post(api.assess.create.path, assessRateLimit, async (req, res) => {
     try {
       const { postcode } = api.assess.create.input.parse(req.body);
       const cleanPostcode = postcode.trim().toUpperCase();
+
+      if (!UK_POSTCODE_REGEX.test(cleanPostcode)) {
+        return res.status(422).json({ message: "Invalid UK postcode format. Please enter a valid postcode (e.g. SW1A 1AA)." });
+      }
+
       const cached = await storage.getAssessmentByPostcode(cleanPostcode);
       
       const userId = (req.user as any)?.claims?.sub || null;

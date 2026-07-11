@@ -16,9 +16,9 @@ export function useCreateAssessment() {
       });
 
       if (!res.ok) {
-        if (res.status === 400) {
-          const error = api.assess.create.responses[400].parse(await res.json());
-          throw new Error(error.message);
+        if (res.status === 400 || res.status === 422) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || "Invalid request");
         }
         throw new Error("Failed to create assessment");
       }

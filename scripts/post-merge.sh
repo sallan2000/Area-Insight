@@ -41,5 +41,7 @@ if [ -d ".git/rebase-merge" ]; then
   "
 fi
 
-npm install
+# Run npm install but don't fail the whole post-merge if a package is blocked by security policy
+npm install || echo "[post-merge] WARNING: npm install failed (possibly a blocked package version) — continuing with existing node_modules"
+
 npm run db:push

@@ -59,6 +59,12 @@ export default function Compare() {
   const [isValidating, setIsValidating] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
+  const normalisePostcode = (pc: string) => pc.replace(/\s+/g, "").toUpperCase();
+  const samePostcode =
+    pc1.trim().length > 0 &&
+    pc2.trim().length > 0 &&
+    normalisePostcode(pc1) === normalisePostcode(pc2);
+
   const { data: report1 } = useAssessment(ids.id1);
   const { data: report2 } = useAssessment(ids.id2);
 
@@ -325,13 +331,20 @@ export default function Compare() {
                 <input
                   type="text"
                   placeholder="e.g. E1 6AN"
-                  className="w-full pl-9 pr-4 py-2 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                  className={`w-full pl-9 pr-4 py-2 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-primary/20 ${samePostcode ? "border-amber-400 focus:ring-amber-200" : ""}`}
                   value={pc2}
                   onChange={(e) => setPc2(e.target.value.toUpperCase())}
+                  data-testid="input-postcode2"
                 />
               </div>
+              {samePostcode && (
+                <p className="flex items-center gap-1.5 text-xs text-amber-600" data-testid="warning-same-postcode">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Both postcodes are the same — please enter two different areas.
+                </p>
+              )}
             </div>
-            <Button type="submit" className="w-full" disabled={isCreating || isValidating}>
+            <Button type="submit" className="w-full" disabled={isCreating || isValidating || samePostcode}>
               <TrendingUp className="mr-2 h-4 w-4" />
               {isValidating ? "Checking postcodes…" : "Compare Areas"}
             </Button>

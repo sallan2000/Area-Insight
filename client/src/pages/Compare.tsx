@@ -54,6 +54,7 @@ export default function Compare() {
   });
   const [ids, setIds] = useState<{id1?: string, id2?: string}>({});
   const [isCreating, setIsCreating] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
   const { data: report1 } = useAssessment(ids.id1);
@@ -81,6 +82,48 @@ export default function Compare() {
         variant: "destructive"
       });
       return;
+    }
+
+    // Validate both postcodes exist before hitting the backend
+    setIsValidating(true);
+    try {
+      const [res1, res2] = await Promise.all([
+        fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPc1)}`),
+        fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPc2)}`)
+      ]);
+      if (!res1.ok && !res2.ok) {
+        toast({
+          title: "Postcodes not found",
+          description: "Neither postcode was recognised. Please check for typos and try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+      if (!res1.ok) {
+        toast({
+          title: "Postcode not found",
+          description: `"${cleanPc1}" is not a recognised UK postcode. Please check for typos and try again.`,
+          variant: "destructive"
+        });
+        return;
+      }
+      if (!res2.ok) {
+        toast({
+          title: "Postcode not found",
+          description: `"${cleanPc2}" is not a recognised UK postcode. Please check for typos and try again.`,
+          variant: "destructive"
+        });
+        return;
+      }
+    } catch {
+      toast({
+        title: "Validation failed",
+        description: "Unable to verify the postcodes. Please check your connection and try again.",
+        variant: "destructive"
+      });
+      return;
+    } finally {
+      setIsValidating(false);
     }
 
     setIds({});
@@ -276,9 +319,9 @@ export default function Compare() {
                 />
               </div>
             </div>
-            <Button type="submit" className="w-full" disabled={isCreating}>
+            <Button type="submit" className="w-full" disabled={isCreating || isValidating}>
               <TrendingUp className="mr-2 h-4 w-4" />
-              Compare Areas
+              {isValidating ? "Checking postcodes…" : "Compare Areas"}
             </Button>
           </form>
         </Card>

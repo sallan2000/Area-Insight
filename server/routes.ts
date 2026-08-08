@@ -500,11 +500,13 @@ function processElements(input: ProcessElementsInput) {
     qualityNudge = Math.max(-15, Math.min(15, Math.round((avgRating - 80) / 80 * 15)));
   }
 
+  const safetySource = isScotlandPostcode ? (scottishSafetyScore != null ? 'simd2020' : 'none') : 'policeuk';
+
   const resultMetrics = {
     crimeCount,
     crimeTrend,
     safetySeverity: severityScore,
-    safetySource: isScotlandPostcode ? (scottishSafetyScore != null ? 'simd2020' : 'none') : 'policeuk',
+    safetySource,
     scottishSafety: scottishSafetyScore != null ? {
       score: scottishSafetyScore,
       crimeRank: scottishSafetyRank,

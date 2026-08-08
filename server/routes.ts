@@ -462,6 +462,44 @@ function processElements(input: ProcessElementsInput) {
   const commuteCityCenter = 45; 
   const commuteMajorHub = 30;
 
+  // Education options: how much real choice does this postcode offer? Based on
+  // the count, diversity and proximity of nearby schools (OSM — works for ALL
+  // nations). England gets a bonus quality nudge from synced Ofsted ratings, but
+  // the base score is identical everywhere, so a Scottish/NI/Welsh parent sees a
+  // genuine "education options" assessment without needing grades that don't exist.
+  const nation = geoData.result.country;
+  const allNearby = [...primarySchools, ...secondarySchools];
+  const schoolCount = allNearby.length;
+  // Saturating count curve: 0 schools -> 0, ~8+ schools -> full marks for supply.
+  const supply = Math.min(100, Math.round((1 - Math.exp(-schoolCount / 4)) * 100));
+  // Diversity: mix of primary + secondary + distinct types (e.g. academy vs
+  // community vs faith) => real choice, not just many identical schools.
+  const hasPrimary = primarySchools.length > 0;
+  const hasSecondary = secondarySchools.length > 0;
+  const phaseCoverage = (hasPrimary ? 50 : 0) + (hasSecondary ? 50 : 0);
+  const types = new Set(allNearby.map((s: any) => (s.type || "unknown").toLowerCase()));
+  const diversity = Math.min(50, types.size * 12);
+  // Proximity: closer schools are more usable options. Average distance, saturating.
+  const avgDist = schoolCount > 0 ? allNearby.reduce((a: number, s: any) => a + s.distance, 0) / schoolCount : 99;
+  const proximity = Math.round((1 - Math.min(1, avgDist / 3)) * 100);
+  // Base "options" score: supply + diversity + proximity.
+  let optionsScore = Math.round(supply * 0.45 + phaseCoverage * 0.20 + diversity * 0.15 + proximity * 0.20);
+  // England-only quality nudge: if any nearby school has a real Ofsted rating,
+  // blend a distance-weighted rating into the score (capped so it can't fully
+  // override the options basis).
+  const rated = allNearby.filter((s: any) => typeof s.ratingScore === "number");
+  let qualityNudge = 0;
+  if (nation === "England" && rated.length > 0) {
+    let wS = 0, sS = 0;
+    for (const s of rated) {
+      const w = 1 / (1 + s.distance);
+      wS += w; sS += w * (s.ratingScore as number);
+    }
+    const avgRating = wS > 0 ? sS / wS : 80;
+    // Map rating (0-100) delta from neutral 80 into a +/- nudge capped at ±15.
+    qualityNudge = Math.max(-15, Math.min(15, Math.round((avgRating - 80) / 80 * 15)));
+  }
+
   const resultMetrics = {
     crimeCount,
     crimeTrend,
@@ -500,49 +538,12 @@ function processElements(input: ProcessElementsInput) {
       nearestSupermarketDist,
       list: amenitiesList
     },
-    // Education options: how much real choice does this postcode offer? Based on
-    // the count, diversity and proximity of nearby schools (OSM — works for ALL
-    // nations). England gets a bonus quality nudge from synced Ofsted ratings, but
-    // the base score is identical everywhere, so a Scottish/NI/Welsh parent sees a
-    // genuine "education options" assessment without needing grades that don't exist.
-    const nation = geoData.result.country;
-    const allNearby = [...primarySchools, ...secondarySchools];
-    const count = allNearby.length;
-    // Saturating count curve: 0 schools -> 0, ~8+ schools -> full marks for supply.
-    const supply = Math.min(100, Math.round((1 - Math.exp(-count / 4)) * 100));
-    // Diversity: mix of primary + secondary + distinct types (e.g. academy vs
-    // community vs faith) => real choice, not just many identical schools.
-    const hasPrimary = primarySchools.length > 0;
-    const hasSecondary = secondarySchools.length > 0;
-    const phaseCoverage = (hasPrimary ? 50 : 0) + (hasSecondary ? 50 : 0);
-    const types = new Set(allNearby.map((s: any) => (s.type || "unknown").toLowerCase()));
-    const diversity = Math.min(50, types.size * 12);
-    // Proximity: closer schools are more usable options. Average distance, saturating.
-    const avgDist = count > 0 ? allNearby.reduce((a: number, s: any) => a + s.distance, 0) / count : 99;
-    const proximity = Math.round((1 - Math.min(1, avgDist / 3)) * 100);
-    // Base "options" score: supply + diversity + proximity.
-    let optionsScore = Math.round(supply * 0.45 + phaseCoverage * 0.20 + diversity * 0.15 + proximity * 0.20);
-    // England-only quality nudge: if any nearby school has a real Ofsted rating,
-    // blend a distance-weighted rating into the score (capped so it can't fully
-    // override the options basis).
-    const rated = allNearby.filter((s: any) => typeof s.ratingScore === "number");
-    let qualityNudge = 0;
-    if (nation === "England" && rated.length > 0) {
-      let wS = 0, sS = 0;
-      for (const s of rated) {
-        const w = 1 / (1 + s.distance);
-        wS += w; sS += w * (s.ratingScore as number);
-      }
-      const avgRating = wS > 0 ? sS / wS : 80;
-      // Map rating (0-100) delta from neutral 80 into a +/- nudge capped at ±15.
-      qualityNudge = Math.max(-15, Math.min(15, Math.round((avgRating - 80) / 80 * 15)));
-    }
     schools: {
       score: Math.max(0, Math.min(100, optionsScore + qualityNudge)),
       optionsScore,
       qualityNudge,
       hasRealRatings: nation === "England" && rated.length > 0,
-      count,
+      count: schoolCount,
       primaryCount: primarySchools.length,
       secondaryCount: secondarySchools.length,
       avgDistanceKm: Math.round(avgDist * 100) / 100,

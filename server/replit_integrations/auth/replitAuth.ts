@@ -19,6 +19,18 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
+  // Fail closed: session middleware must never run with a missing or empty
+  // SESSION_SECRET. An empty/known secret signs cookies with a fixed value,
+  // exposing every session to forgery. Refuse to boot rather than run insecurely.
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret) {
+    console.error(
+      "[auth] FATAL: SESSION_SECRET is not set. Refusing to start with an " +
+        "insecure session store. Set SESSION_SECRET in your environment/secrets."
+    );
+    process.exit(1);
+  }
+
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
@@ -28,7 +40,7 @@ export function getSession() {
     tableName: "sessions",
   });
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret: sessionSecret,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,

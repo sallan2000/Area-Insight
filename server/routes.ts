@@ -8,6 +8,25 @@ import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
 
+// Sanitise error messages before they reach clients. Upstream provider and
+// internal errors can leak secrets, connection strings, or stack detail if
+// surfaced verbatim. Only expose the message when it looks like a safe,
+// user-facing error; otherwise fall back to a generic string.
+function safeMessage(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  const msg = err.message;
+  if (typeof msg !== "string" || !msg) return fallback;
+  const inner = msg.toLowerCase();
+  const leakMarkers = [
+    "secret", "password", "token", "apikey", "api_key", "key=",
+    "authorization", "authorisation", "postgres", "connection",
+    "etimedout", "econn", "stack", " at ", "\n",
+  ];
+  if (leakMarkers.some((m) => inner.includes(m))) return fallback;
+  if (msg.length > 200) return fallback;
+  return msg;
+}
+
 // One-time flag: log Ofcom mobile API schema once per process to confirm field names/types.
 let ofcomMobileSchemaLogged = false;
 
@@ -990,7 +1009,7 @@ export async function registerRoutes(
       }
       res.status(201).json(assessment);
     } catch (e: any) {
-      res.status(400).json({ message: e.message || "Failed to fetch data" });
+      res.status(400).json({ message: safeMessage(e, "Failed to fetch data") });
     }
   });
 
@@ -1038,7 +1057,7 @@ export async function registerRoutes(
 
       res.json(updated);
     } catch (e: any) {
-      res.status(400).json({ message: e.message || "Failed to refresh assessment" });
+      res.status(400).json({ message: safeMessage(e, "Failed to refresh assessment") });
     }
   });
 
@@ -1132,7 +1151,7 @@ export async function registerRoutes(
           );
           results.push({ id: assessment.id, postcode: assessment.postcode, status: partialData ? "still-partial" : "refreshed" });
         } catch (err: any) {
-          results.push({ id: assessment.id, postcode: assessment.postcode, status: "failed", error: err.message || "Unknown error" });
+          results.push({ id: assessment.id, postcode: assessment.postcode, status: "failed", error: safeMessage(err, "Unknown error") });
         }
         await new Promise(resolve => setTimeout(resolve, 500));
       }

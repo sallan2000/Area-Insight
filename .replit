@@ -90,7 +90,9 @@ integrations = ["javascript_log_in_with_replit:2.0.0"]
 [userenv]
 
 [userenv.shared]
-OFCOM_API_KEY = ""
+# OFCOM_API_KEY must come from Replit Secrets (or deployment env), never
+# committed here. Set it in the Secrets manager; it is injected as an
+# environment variable at runtime and read in server/routes.ts.
 
 [postMerge]
 path = "scripts/post-merge.sh"

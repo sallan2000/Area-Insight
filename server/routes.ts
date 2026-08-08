@@ -595,50 +595,101 @@ async function fetchAreaMetrics(postcode: string) {
   };
 
   // 2c. Air quality (DEFRA) — returns real data or null; heuristic fallback applied later in processElements
+  // Note: /stations?near= is broken (400). Working approach: /timeseries?bbox=&expanded=true,
+  // then find nearest station from results. Coordinates are stored as [lat, lng] (non-standard).
   const getAirQualityFromDefra = async (): Promise<any | null> => {
     const tAq = Date.now();
     try {
-      const res = await fetch(`https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations?near=${lat},${lng}&limit=1`, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (res.ok) {
-        const stations = await res.json();
-        if (stations && stations.length > 0) {
-          const station = stations[0];
-          const stationDist = station.geometry?.coordinates
-            ? getDistance(lat, lng, station.geometry.coordinates[1], station.geometry.coordinates[0]) : null;
-          const tsRes = await fetch(
-            `https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations/${station.properties?.id || station.id}/timeseries`,
-            { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
-          );
-          if (tsRes.ok) {
-            const timeseries = await tsRes.json();
-            const pollutantMap: Record<string, number> = {};
-            for (const ts of timeseries.slice(0, 10)) {
-              if (ts.lastValue?.value != null) {
-                const label = (ts.parameters?.phenomenon?.label || ts.label || "").toLowerCase();
-                if (label.includes("pm2.5") || label.includes("pm25")) pollutantMap["PM2.5"] = ts.lastValue.value;
-                else if (label.includes("pm10")) pollutantMap["PM10"] = ts.lastValue.value;
-                else if (label.includes("no2") || label.includes("nitrogen dioxide")) pollutantMap["NO₂"] = ts.lastValue.value;
-                else if (label.includes("o3") || label.includes("ozone")) pollutantMap["O₃"] = ts.lastValue.value;
-                else if (label.includes("so2") || label.includes("sulphur")) pollutantMap["SO₂"] = ts.lastValue.value;
-              }
-            }
-            const pm25 = pollutantMap["PM2.5"] || 0, pm10 = pollutantMap["PM10"] || 0;
-            const no2 = pollutantMap["NO₂"] || 0, o3 = pollutantMap["O₃"] || 0;
-            if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
-              const daqi = daqiBands(pm25, pm10, no2, o3);
-              console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (real data)`);
-              return {
-                index: daqi, level: daqiLevel(daqi), description: daqiDesc(daqi),
-                pollutants: Object.entries(pollutantMap).map(([name, value]) => ({ name, value: Math.round(value * 10) / 10, unit: "μg/m³" })),
-                station: { name: station.properties?.label || station.label || "Unknown", distance: stationDist },
-                source: "DEFRA UK-AIR"
-              };
-            }
+      // Build a ~25 km bounding box around the postcode
+      const latDelta = 0.25;
+      const lngDelta = 0.35;
+      const minLat = lat - latDelta, maxLat = lat + latDelta;
+      const minLng = lng - lngDelta, maxLng = lng + lngDelta;
+      const bbox = `${minLng},${minLat},${maxLng},${maxLat}`;
+
+      const res = await fetch(
+        `https://uk-air.defra.gov.uk/sos-ukair/api/v1/timeseries?bbox=${bbox}&expanded=true`,
+        { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) {
+        console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (DEFRA HTTP ${res.status})`);
+        return null;
+      }
+
+      const timeseries: any[] = await res.json();
+      if (!timeseries || timeseries.length === 0) {
+        console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (no stations in bbox)`);
+        return null;
+      }
+
+      // Each timeseries entry is a single pollutant at a single location.
+      // The API assigns a unique station.properties.id per pollutant series, so we must
+      // match pollutants individually and find the nearest series for each one.
+      // Station label format: "{Location}-{Pollutant} (air)" — pollutant is after the last '-'.
+      // Coordinates are stored as [lat, lng, alt] (non-standard GeoJSON).
+      type BestEntry = { dist: number; value: number; locationName: string };
+      const best: Record<string, BestEntry> = {};
+
+      for (const ts of timeseries) {
+        if (ts.lastValue?.value == null) continue;
+        const sc = ts.station?.geometry?.coordinates;
+        if (!sc) continue;
+        const sLat = parseFloat(sc[0]);
+        const sLng = parseFloat(sc[1]);
+        if (isNaN(sLat) || isNaN(sLng)) continue;
+        const dist = getDistance(lat, lng, sLat, sLng);
+
+        const fullLabel: string = (ts.station?.properties?.label || "").toLowerCase();
+        // Extract pollutant part (everything after the last '-')
+        const pollutantPart = fullLabel.includes("-") ? fullLabel.split("-").pop()!.trim() : fullLabel;
+        const uom: string = (ts.uom || "").toLowerCase();
+        // CO is reported in mg/m³ — convert to μg/m³
+        const val = ts.lastValue.value * (uom.startsWith("mg") ? 1000 : 1);
+        // Location name is the part before the last '-'
+        const locationName = fullLabel.includes("-")
+          ? fullLabel.split("-").slice(0, -1).join("-").trim() : fullLabel;
+
+        const update = (key: string) => {
+          if (!best[key] || dist < best[key].dist) {
+            best[key] = { dist, value: val, locationName };
           }
+        };
+
+        if (pollutantPart.includes("pm2.5") || pollutantPart.includes("pm 2.5") || pollutantPart.includes("particulate matter < 2.5")) {
+          update("PM2.5");
+        } else if (pollutantPart.includes("pm10") || pollutantPart.includes("pm 10") || pollutantPart.includes("particulate matter < 10")) {
+          update("PM10");
+        } else if (pollutantPart.includes("nitrogen dioxide") || pollutantPart.includes("no2 ") || pollutantPart.startsWith("no2")) {
+          update("NO₂");
+        } else if (pollutantPart.includes("ozone") || pollutantPart.startsWith("o3 ") || pollutantPart === "ozone (air)") {
+          update("O₃");
+        } else if (pollutantPart.includes("sulphur dioxide") || pollutantPart.includes("sulfur dioxide") || pollutantPart.includes("so2")) {
+          update("SO₂");
         }
+      }
+
+      const pollutantMap: Record<string, number> = {};
+      for (const [key, entry] of Object.entries(best)) {
+        pollutantMap[key] = entry.value;
+      }
+
+      const pm25 = pollutantMap["PM2.5"] || 0, pm10 = pollutantMap["PM10"] || 0;
+      const no2 = pollutantMap["NO₂"] || 0, o3 = pollutantMap["O₃"] || 0;
+      if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
+        const daqi = daqiBands(pm25, pm10, no2, o3);
+        // Report the nearest NO₂ station name as the representative location
+        const repEntry = best["NO₂"] || best["PM2.5"] || best["PM10"] || best["O₃"] || Object.values(best)[0];
+        const stationName = repEntry
+          ? repEntry.locationName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+          : "Nearby station";
+        const stationDist = repEntry?.dist ?? 0;
+        console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (real data, station: ${stationName}, pollutants: ${Object.keys(pollutantMap).join(",")})`);
+        return {
+          index: daqi, level: daqiLevel(daqi), description: daqiDesc(daqi),
+          pollutants: Object.entries(pollutantMap).map(([name, value]) => ({ name, value: Math.round(value * 10) / 10, unit: "μg/m³" })),
+          station: { name: stationName, distance: stationDist },
+          source: "DEFRA UK-AIR"
+        };
       }
     } catch (e) { console.error("DEFRA UK-AIR fetch failed:", e); }
     console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (no real data)`);

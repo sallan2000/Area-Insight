@@ -64,11 +64,19 @@ lets you save a search history and *refresh* a report to pull fresh data.
 
 ## Things worth knowing
 
-- **School scores are placeholders.** The list of nearest schools is real, but
-  the score itself does not yet reflect real Ofsted/quality ratings.
-- **Scottish safety is not scored.** Police Scotland doesn't publish via the
-  police.uk API, so for Scottish postcodes the Safety score is omitted (a note is
-  shown instead).
+- **School scores measure "education options" for all UK nations.** The number,
+  mix and proximity of nearby schools (from OpenStreetMap) are scored for England,
+  Scotland, Wales and Northern Ireland alike. England additionally gets a capped
+  Ofsted quality nudge from synced ratings; the other nations use the options
+  basis only (their rating feeds aren't published as comparable grades).
+- **Scottish safety is scored from an annual proxy.** Police Scotland doesn't
+  publish via the police.uk API, so Safety for Scottish postcodes uses the Scottish
+  Government **SIMD 2020v2 Crime domain** resolved to the postcode's Data Zone —
+  clearly labelled as annual, small-area statistics, not realtime crime.
+- **Every report carries a Data Confidence band.** Each component is flagged
+  `measured` (real data) or `estimated` (heuristic fallback, e.g. air quality with
+  no nearby DEFRA station, or Overpass outage), and an overall high/medium/low band
+  plus plain-language notes are shown in the report and email.
 - **Crime is street-level**, within about 1.5 km of the postcode.
 - **Air quality** uses real DEFRA stations when available, otherwise a location
   estimate.
@@ -130,7 +138,8 @@ lets you save a search history and *refresh* a report to pull fresh data.
 | **Ofcom Broadband API** | Predicted download/upload speeds (Standard/Superfast/Ultrafast) |
 | **OpenChargeMap** | Nearest EV chargers (informational only — not scored) |
 | **Resend** | Email share |
-| **Static JSON** (`server/data/`) | Council-tax bands (England/Wales LSOA, Scotland council areas) + Scottish crime rates |
+| **Static JSON** (`server/data/`) | Council-tax bands (England/Wales LSOA, Scotland council areas); Scottish SIMD 2020v2 crime proxy (`scotland-datazone-crime.json`); ground-truth reference data for validation (`imd-england.json`, `scotland-simd-rank.json`) |
+| **England schools** | Synced via `npm run sync:schools` from DfE GIAS (directory) + Ofsted outcomes (ratings) → `server/data/schools.json` |
 
 ## Scoring model (technical)
 
@@ -146,16 +155,26 @@ total = transport * 0.25
 
 - **Transport** blends station distance, bus density, and commute estimates; a
   nearby major hub multiplies the score by 1.2.
-- **Safety** starts at 100 and subtracts weighted crime-density and a severity
-  component (violent×5, burglary×3, vehicle×2, drugs×2, ASB×1), with a trend
-  multiplier (down→×1.1, up→×0.8). Scotland uses a higher severity ceiling and a
-  1.3 regional multiplier (Police Scotland data is unavailable via police.uk, so
-  safety is excluded from the score and from emailed reports for Scottish
-  postcodes).
+- **Safety** for England & Wales uses live police.uk street crime (weighted
+  crime-density + severity, with a trend multiplier). **Scotland** has no realtime
+  street-crime feed, so it uses a **proxy**: the Scottish Government **SIMD 2020v2
+  Crime domain** resolved to the postcode's Data Zone (via postcodes.io `lsoa11`),
+  inverted to the same 0–100 scale (rank 1 = most crime-affected → ~0, rank ~6,976 →
+  100). This is **annual, small-area (≈700 people) statistics — clearly labelled as
+  not realtime** in the report and email. Regenerate the proxy dataset with
+  `npm run sync:scotland-crime` (writes `server/data/scotland-datazone-crime.json`).
+- **Schools** measures **education options**: the number, mix and proximity of
+  nearby schools (from OpenStreetMap, available for all four UK nations), so a
+  Scottish, Welsh or Northern Irish postcode gets a genuine "how much choice is
+  nearby" score just like England. The score blends a saturating **supply** curve
+  (≈8+ schools → full marks), **phase coverage** (primary + secondary both present),
+  **diversity** (distinct school types = real choice) and **proximity** (closer =
+  more usable). **England only** gets a bonus quality nudge from synced Ofsted
+  ratings (`server/data/schools.json`, via `npm run sync:schools`), capped at ±15 so
+  it refines rather than dominates. Where no rating feed exists, the score is purely
+  the options basis — no fake grades.
 - **Amenities** blends count, category diversity, top-rated count, and supermarket
   proximity.
-- **Schools** is currently a fixed `primaryRating = secondaryRating = 80` — it
-  does **not** yet reflect real Ofsted data.
 
 Raw metrics are stored as JSON (`rawMetrics`) so the scoring function can be
 re-run or tweaked without re-fetching external data.
@@ -323,11 +342,55 @@ Area-Insight/
 
 ## Known limitations (technical)
 
-- School scores are hardcoded 80/100 placeholders.
-- Scottish safety excluded (no Police Scotland via police.uk).
+- Scottish safety uses the SIMD 2020v2 Data Zone crime proxy (annual, not realtime) —
+  scored on the same scale as England, with the caveat shown in the report/email.
+- Schools score = "education options" (count + mix + proximity of nearby schools from
+  OSM), available for all UK nations. England adds a capped Ofsted quality nudge.
 - Crime is street-level only, ~1.5 km, normalised to a nominal 0.25 km² area.
 - Air quality falls back to a location heuristic when no DEFRA station is found.
 - EV-charger data is informational, intentionally excluded from scoring.
 - Rate-limit state is in-process memory — does **not** coordinate across multiple
   server instances. Use a shared store (Redis) if running more than one process
   behind a load balancer.
+
+## Confidence bands & score validation
+
+The composite weights and transforms are **tuning constants**, not derived from a
+ground-truth regression. Two features keep the score honest:
+
+**Data Confidence band (runtime).** Every report computes a `confidence` object:
+each component is flagged `measured` (real data) or `estimated` (heuristic
+fallback — e.g. air quality with no nearby DEFRA station, or an Overpass outage),
+and an overall `high` / `medium` / `low` band plus plain-language notes are shown
+in the report UI and the emailed/exported report. It qualifies *data quality*, not
+accuracy.
+
+**Validation against official deprivation indices.** The accepted official measure
+of area liveability in GB is the **Index/SimD of Multiple Deprivation** (IMD for
+England, SIMD for Scotland) — a rank per small area where rank 1 = most deprived.
+`npm run validate:score` scores a curated spread of real postcodes through the live
+server pipeline (`POST /api/assess`), joins each to its official IMD/SIMD rank, and
+reports **Spearman's ρ** between our `overallScore` and the official inverted rank.
+Use it to check and justify the composite weights (see `CONFIDENCE.md`).
+
+```bash
+npm run dev                # start the app (PORT, default 5000)
+npm run validate:score     # against http://localhost:5000
+# or: npm run validate:score -- --server https://your-host
+```
+
+Reference data (bundled, git-ignored, Open Government Licence):
+`imd-england.json` (LSOA11 → IMD 2019 rank, MHCLG) and `scotland-simd-rank.json`
+(Data Zone → SIMD 2020v2 overall rank, Scottish Government). Wales/NI are skipped
+by the harness until their reference data is added.
+
+### npm scripts
+
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | tsx server + Vite HMR |
+| `npm run build` / `npm start` | production build / serve |
+| `npm run check` | `tsc` type-check |
+| `npm run sync:schools` | refresh `server/data/schools.json` (England schools + Ofsted) |
+| `npm run sync:scotland-crime` | refresh `server/data/scotland-datazone-crime.json` (SIMD crime proxy) |
+| `npm run validate:score` | correlation check vs official IMD/SIMD (requires running server) |

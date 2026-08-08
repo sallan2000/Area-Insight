@@ -8,7 +8,10 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "sync:schools": "tsx scripts/sync-schools.ts",
+    "sync:scotland-crime": "python3 scripts/sync-scotland-crime.py",
+    "validate:score": "tsx scripts/validate-score.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

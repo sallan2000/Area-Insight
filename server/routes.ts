@@ -90,6 +90,45 @@ try {
   console.error("Failed to load Scottish crime rate data:", e);
 }
 
+// England schools (synced via `npm run sync:schools` from DfE GIAS + Ofsted).
+// Each entry: { urn, name, phase: 'primary'|'secondary', lat, lng, postcode, rating: 1..4|null, ratingScore: 100|80|50|20|null, type }
+type SchoolEntry = { urn: string; name: string; phase: 'primary' | 'secondary'; lat: number; lng: number; postcode: string; rating: number | null; ratingScore: number | null; type: string };
+let schoolsLookup: SchoolEntry[] = [];
+try {
+  const basePath = join(process.cwd(), 'server', 'data', 'schools.json');
+  const distPath = join(process.cwd(), 'dist', 'data', 'schools.json');
+  let data: string;
+  try {
+    data = readFileSync(basePath, 'utf-8');
+  } catch {
+    data = readFileSync(distPath, 'utf-8');
+  }
+  schoolsLookup = JSON.parse(data) as SchoolEntry[];
+  console.log(`Loaded ${schoolsLookup.length} England schools (${schoolsLookup.filter(s => s.ratingScore != null).length} rated)`);
+} catch (e) {
+  console.warn("schools.json not found — school scoring will fall back to a neutral 80 until `npm run sync:schools` is run.");
+}
+
+// Scottish crime proxy: SIMD 2020v2 Crime domain per Data Zone (S010xxxxx).
+// Resolves a Scottish postcode → Data Zone (via postcodes.io `codes.lsoa11`) →
+// crime rank, giving a real (annual, zone-level) Safety score instead of N/A.
+type ScotDzCrime = { crimeRank: number; crimeRate: number | null };
+let scotlandDzCrime: Record<string, ScotDzCrime> = {};
+try {
+  const basePath = join(process.cwd(), 'server', 'data', 'scotland-datazone-crime.json');
+  const distPath = join(process.cwd(), 'dist', 'data', 'scotland-datazone-crime.json');
+  let data: string;
+  try {
+    data = readFileSync(basePath, 'utf-8');
+  } catch {
+    data = readFileSync(distPath, 'utf-8');
+  }
+  scotlandDzCrime = JSON.parse(data) as Record<string, ScotDzCrime>;
+  console.log(`Loaded ${Object.keys(scotlandDzCrime).length} Scottish Data Zone crime entries (SIMD 2020v2)`);
+} catch (e) {
+  console.warn("scotland-datazone-crime.json not found — Scottish Safety will fall back to N/A until `npm run sync:scotland-crime` is run.");
+}
+
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371; // Radius of the earth in km
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -207,20 +246,59 @@ function processElements(input: ProcessElementsInput) {
 
   const busStopList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.highway === "bus_stop" || e.tags?.highway === "platform"), 5);
   const trainStationList = getNearest(elementsWithDistance.filter((e: any) => e.tags?.railway === "station" || e.tags?.railway === "halt"), 5);
-  
-  const allSchools = elementsWithDistance.filter((e: any) => e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "university" || e.tags?.amenity === "kindergarten");
-  
-  const primaryKeywords = ["primary", "nursery", "infant", "junior", "pre-school", "pre school", "early learning", "kindergarten"];
-  
-  const primarySchools = getNearest(allSchools.filter((s: any) => {
-    const name = (s.tags.name || "").toLowerCase();
-    return primaryKeywords.some(k => name.includes(k));
-  }), 1000);
 
-  const secondarySchools = getNearest(allSchools.filter((s: any) => {
-    const name = (s.tags.name || "").toLowerCase();
-    return !primaryKeywords.some(k => name.includes(k));
-  }), 1000);
+  // Schools for the "education options" metric come from OSM (works for ALL nations
+  // — school locations exist everywhere, unlike ratings). Each is enriched with its
+  // real Ofsted rating when present in the synced England dataset (schools.json), so
+  // England gets a quality signal on top of the universal count/diversity/proximity
+  // basis. We classify OSM schools by name keywords (no reliable phase tag in OSM).
+  const isChildAmenity = (e: any) =>
+    e.tags?.amenity === "kindergarten" || /nursery|child/i.test((e.tags?.name || "").toLowerCase());
+  const isPrimaryName = (name: string) =>
+    /primary|nursery|infant|junior|pre-?school|early learning|kindergarten/i.test(name);
+  const isSecondaryName = (name: string) =>
+    /secondary|grammar|high school|academy|senior school|upper school/i.test(name) &&
+    !/sixth form college|further education|fe college/i.test(name);
+
+  const classifyPhase = (e: any): "primary" | "secondary" | "other" => {
+    const n = (e.tags?.name || "").toLowerCase();
+    if (isPrimaryName(n)) return "primary";
+    if (isSecondaryName(n)) return "secondary";
+    if (e.tags?.amenity === "kindergarten") return "primary";
+    if (e.tags?.amenity === "school") return "secondary"; // unlabelled school → broader choice
+    if (isChildAmenity(e)) return "primary";
+    return "other";
+  };
+
+  // Enrich an OSM school with its Ofsted rating when it matches a synced England
+  // school by name + proximity (no stable ID in OSM). Keeps ratings England-only.
+  const enrichWithRating = (s: { name: string; distance: number; phase: "primary" | "secondary" }) => {
+    const candidates = schoolsLookup
+      .filter((x) => x.nation === "england" && x.phase === s.phase && x.name && s.name &&
+        Math.abs(getDistance(lat, lng, x.lat, x.lng) - s.distance) < 0.08)
+      .sort((a, b) => getDistance(lat, lng, a.lat, a.lng) - getDistance(lat, lng, b.lat, b.lng));
+    const match = candidates.find((x) => {
+      const a = (x.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const b = (s.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return a.length > 4 && b.length > 4 &&
+        (a.includes(b.slice(0, 12)) || b.includes(a.slice(0, 12)));
+    });
+    return match ? { ...s, rating: match.rating, ratingScore: match.ratingScore } : s;
+  };
+
+  const osmSchools = elementsWithDistance.filter((e: any) =>
+    e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "kindergarten"
+  );
+  const primarySchoolsAll = osmSchools
+    .filter((e: any) => classifyPhase(e) === "primary")
+    .map((e: any) => enrichWithRating({ name: e.tags?.name || "Unnamed", distance: e.distance, phase: "primary" as const }));
+  const secondarySchoolsAll = osmSchools
+    .filter((e: any) => classifyPhase(e) === "secondary")
+    .map((e: any) => enrichWithRating({ name: e.tags?.name || "Unnamed", distance: e.distance, phase: "secondary" as const }));
+
+  // Nearest N for display/lists
+  const primarySchools = primarySchoolsAll.sort((a: any, b: any) => a.distance - b.distance).slice(0, 1000);
+  const secondarySchools = secondarySchoolsAll.sort((a: any, b: any) => a.distance - b.distance).slice(0, 1000);
   
   const amenitiesList = [
     ...localAmenitiesElements
@@ -260,6 +338,29 @@ function processElements(input: ProcessElementsInput) {
   const scotBand = !voaBand && isScotlandPostcode && scotCouncilCode
     ? scotlandCouncilBandLookup[scotCouncilCode] || null
     : null;
+
+  // Scottish Safety proxy: no realtime street-crime feed exists for Scotland, so we
+  // use the Scottish Government SIMD 2020v2 Crime domain — an annual, Data Zone
+  // (≈700 people) measure. Resolve this postcode's Data Zone via postcodes.io
+  // `codes.lsoa11` (which IS the 2011 Data Zone for Scotland) and look up its crime
+  // rank (1 = most crime-deprived … ~6930 = least). Invert to a 0–100 Safety score
+  // so it sits on the same scale as the England safety metric. Clearly labelled
+  // "annual / zone-level" in the UI — never presented as realtime.
+  let scottishSafetyScore: number | null = null;
+  let scottishSafetyRank: number | null = null;
+  let scottishSafetyRate: number | null = null;
+  if (isScotlandPostcode) {
+    const dz = geoData.result.codes?.lsoa11 || null;
+    const entry = dz ? scotlandDzCrime[dz] : null;
+    if (entry && entry.crimeRank) {
+      scottishSafetyRank = entry.crimeRank;
+      scottishSafetyRate = entry.crimeRate;
+      // Crime domain rank: 1 = most crime-affected (worst safety), ~6976 = least.
+      // Higher rank => safer, so Safety = rank scaled to 0–100 (rank 1 -> 0, rank N -> 100).
+      const maxRank = 6976;
+      scottishSafetyScore = Math.round((entry.crimeRank - 1) / (maxRank - 1) * 100);
+    }
+  }
 
   // Crude outcode heuristic for NI and any genuinely unmatched postcodes
   const getEstimatedBand = (outcode: string) => {
@@ -365,6 +466,14 @@ function processElements(input: ProcessElementsInput) {
     crimeCount,
     crimeTrend,
     safetySeverity: severityScore,
+    safetySource: isScotlandPostcode ? (scottishSafetyScore != null ? 'simd2020' : 'none') : 'policeuk',
+    scottishSafety: scottishSafetyScore != null ? {
+      score: scottishSafetyScore,
+      crimeRank: scottishSafetyRank,
+      crimeRate: scottishSafetyRate,
+      dataZone: geoData.result.codes?.lsoa11 || null,
+      year: '2020/21',
+    } : null,
     safetyBreakdown: {
       violent: violentCrimes,
       theft: burglaryCrimes,
@@ -391,12 +500,54 @@ function processElements(input: ProcessElementsInput) {
       nearestSupermarketDist,
       list: amenitiesList
     },
+    // Education options: how much real choice does this postcode offer? Based on
+    // the count, diversity and proximity of nearby schools (OSM — works for ALL
+    // nations). England gets a bonus quality nudge from synced Ofsted ratings, but
+    // the base score is identical everywhere, so a Scottish/NI/Welsh parent sees a
+    // genuine "education options" assessment without needing grades that don't exist.
+    const nation = geoData.result.country;
+    const allNearby = [...primarySchools, ...secondarySchools];
+    const count = allNearby.length;
+    // Saturating count curve: 0 schools -> 0, ~8+ schools -> full marks for supply.
+    const supply = Math.min(100, Math.round((1 - Math.exp(-count / 4)) * 100));
+    // Diversity: mix of primary + secondary + distinct types (e.g. academy vs
+    // community vs faith) => real choice, not just many identical schools.
+    const hasPrimary = primarySchools.length > 0;
+    const hasSecondary = secondarySchools.length > 0;
+    const phaseCoverage = (hasPrimary ? 50 : 0) + (hasSecondary ? 50 : 0);
+    const types = new Set(allNearby.map((s: any) => (s.type || "unknown").toLowerCase()));
+    const diversity = Math.min(50, types.size * 12);
+    // Proximity: closer schools are more usable options. Average distance, saturating.
+    const avgDist = count > 0 ? allNearby.reduce((a: number, s: any) => a + s.distance, 0) / count : 99;
+    const proximity = Math.round((1 - Math.min(1, avgDist / 3)) * 100);
+    // Base "options" score: supply + diversity + proximity.
+    let optionsScore = Math.round(supply * 0.45 + phaseCoverage * 0.20 + diversity * 0.15 + proximity * 0.20);
+    // England-only quality nudge: if any nearby school has a real Ofsted rating,
+    // blend a distance-weighted rating into the score (capped so it can't fully
+    // override the options basis).
+    const rated = allNearby.filter((s: any) => typeof s.ratingScore === "number");
+    let qualityNudge = 0;
+    if (nation === "England" && rated.length > 0) {
+      let wS = 0, sS = 0;
+      for (const s of rated) {
+        const w = 1 / (1 + s.distance);
+        wS += w; sS += w * (s.ratingScore as number);
+      }
+      const avgRating = wS > 0 ? sS / wS : 80;
+      // Map rating (0-100) delta from neutral 80 into a +/- nudge capped at ±15.
+      qualityNudge = Math.max(-15, Math.min(15, Math.round((avgRating - 80) / 80 * 15)));
+    }
     schools: {
-      primaryRating: 80,
-      secondaryRating: 80,
-      count: primarySchools.length + secondarySchools.length,
-      primaryList: primarySchools,
-      secondaryList: secondarySchools
+      score: Math.max(0, Math.min(100, optionsScore + qualityNudge)),
+      optionsScore,
+      qualityNudge,
+      hasRealRatings: nation === "England" && rated.length > 0,
+      count,
+      primaryCount: primarySchools.length,
+      secondaryCount: secondarySchools.length,
+      avgDistanceKm: Math.round(avgDist * 100) / 100,
+      primaryList: primarySchools.slice(0, 10).map((s: any) => ({ name: s.name, distance: s.distance, rating: s.rating, ratingScore: s.ratingScore })),
+      secondaryList: secondarySchools.slice(0, 10).map((s: any) => ({ name: s.name, distance: s.distance, rating: s.rating, ratingScore: s.ratingScore }))
     },
     environment: {
       airQuality,
@@ -434,6 +585,7 @@ function processElements(input: ProcessElementsInput) {
       street: streetName || street,
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
       isScotland: geoData.result.country === 'Scotland',
+      nation: geoData.result.country,
       crimeDataUnavailable,
       scotCrimeContext: (() => {
         if (!crimeDataUnavailable) return null;
@@ -449,7 +601,32 @@ function processElements(input: ProcessElementsInput) {
       })(),
       overpassFailed,
       airQualityEstimated
-    }
+    },
+    // ── Confidence / data-quality banding ──────────────────────────────────
+    // Surfaces how much of this score rests on real measurements vs heuristics,
+    // so the headline number is honestly qualified. Computed from signals already
+    // collected above (no new fetches).
+    confidence: (() => {
+      type Q = 'measured' | 'estimated' | 'unavailable';
+      const transport: Q = overpassFailed ? 'estimated' : 'measured';
+      const schools: Q = overpassFailed ? 'estimated' : 'measured';
+      const amenities: Q = overpassFailed ? 'estimated' : 'measured';
+      const safety: Q = (safetySource === 'policeuk' || safetySource === 'simd2020')
+        ? 'measured' : 'unavailable';
+      const environment: Q = airQualityEstimated ? 'estimated' : (resultMetrics.environment?.airQuality?.source === 'DEFRA UK-AIR' ? 'measured' : 'estimated');
+      const flags: string[] = [];
+      if (overpassFailed) flags.push('Transport, schools & amenities use estimated OSM fallbacks (Overpass was unreachable).');
+      if (airQualityEstimated) flags.push('Air quality is a location-based estimate (no DEFRA station nearby).');
+      if (safety === 'unavailable') flags.push('Safety could not be computed for this postcode.');
+      if (safetySource === 'simd2020') flags.push('Safety uses annual SIMD 2020v2 Data Zone statistics, not realtime crime.');
+      const estimatedCount = [transport, schools, amenities, environment].filter(q => q === 'estimated').length;
+      const overall: 'high' | 'medium' | 'low' =
+        safety === 'unavailable' ? 'low'
+        : estimatedCount === 0 ? 'high'
+        : estimatedCount <= 2 ? 'medium'
+        : 'low';
+      return { overall, components: { transport, schools, amenities, safety, environment }, flags };
+    })()
   };
 }
 
@@ -913,11 +1090,17 @@ async function fetchAreaMetrics(postcode: string) {
   const { allMonthsCrimes, neighbourhoodInfo, lastDateStr } = crimeResult;
   let crimesData: any[] = allMonthsCrimes.flat();
 
-  // Scotland: Police Scotland does not publish data via the police.uk API
+  // Scotland: Police Scotland does not publish data via the police.uk API, so the
+  // live street-crime feed is empty. We instead use the SIMD 2020v2 Data Zone crime
+  // proxy (loaded from scotland-datazone-crime.json). Only flag "unavailable" when
+  // that proxy dataset itself failed to load — otherwise Scotland gets a real score.
   const isScotland = geoData.result.country === 'Scotland';
-  const crimeDataUnavailable = isScotland && crimesData.length === 0;
-  if (crimeDataUnavailable) {
-    console.log("Scottish postcode detected with no crime data — marking as unavailable (no fallback applied).");
+  const scotlandProxyAvailable = Object.keys(scotlandDzCrime).length > 0;
+  const crimeDataUnavailable = isScotland && !scotlandProxyAvailable;
+  if (isScotland && !scotlandProxyAvailable) {
+    console.log("Scottish postcode detected but SIMD crime dataset missing — marking Safety as unavailable.");
+  } else if (isScotland) {
+    console.log("Scottish postcode detected — using SIMD 2020v2 Data Zone crime proxy for Safety.");
   }
 
   // Area normalisation
@@ -992,9 +1175,14 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const crimeDensity = (metrics.crimeCount / 3.14) * densityMultiplier;
   const densityCeiling = isScotland ? 300 : 400;
   const crimeDensityPoints = normalize(crimeDensity, 0, densityCeiling);
-  const safetyBase = 100 - (crimeDensityPoints * 0.4) - (severityPoints * 0.6);
+  // For Scotland, use the SIMD 2020v2 Data Zone crime proxy when available (a real
+  // score on the same 0–100 scale) instead of the always-zero police.uk feed.
+  const scottishProxy = isScotland && metrics.scottishSafety?.score != null ? metrics.scottishSafety.score : null;
+  const safetyBase = scottishProxy != null
+    ? scottishProxy
+    : 100 - (crimeDensityPoints * 0.4) - (severityPoints * 0.6);
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
-  const safetyScoreFinal = Math.min(100, Math.max(0, safetyBase * trendMultiplier));
+  const safetyScoreFinal = Math.min(100, Math.max(0, Math.round(safetyBase * trendMultiplier)));
 
   const a1 = normalize(metrics.amenities.amenitiesCount, 0, 40);
   const a2 = normalize(metrics.amenities.diversityIndex, 0, 12);
@@ -1002,7 +1190,7 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const supermarketProximity = 100 - normalize(metrics.amenities.nearestSupermarketDist || 5, 0, 3);
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
-  const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.primaryRating * 0.5) + (metrics.schools.secondaryRating * 0.5);
+  const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.score ?? 0);
   const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
 
   return {
@@ -1195,12 +1383,12 @@ export async function registerRoutes(
 
       const categoryRows = [
         { label: "🚌 Transport", score: Math.round(scores.transport) },
-        { label: "🛡️ Safety", score: safetyExcluded ? null : Math.round(scores.safety) },
+        { label: "🛡️ Safety", score: safetyExcluded ? null : Math.round(scores.safety), source: raw?.safetySource },
         { label: "🎓 Schools", score: Math.round(scores.schools) },
         { label: "🛒 Amenities", score: Math.round(scores.amenities) },
-      ].map(({ label, score }) => score === null
-        ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (Scotland)</td></tr>`
-        : `<tr><td style="padding:8px 12px;color:#374151;">${label}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
+      ].map(({ label, score, source }) => score === null
+        ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (data unavailable)</td></tr>`
+        : `<tr><td style="padding:8px 12px;color:#374151;">${label}${source === 'simd2020' ? ' <span style="font-size:10px;color:#9ca3af;">(SIMD 2020)</span>' : ''}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
       ).join("");
 
       const html = `<!DOCTYPE html>

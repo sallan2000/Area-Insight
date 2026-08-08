@@ -166,6 +166,78 @@ test("allows re-fetch when stale and refresh cooldown has expired", async () => 
     "must attempt to call external APIs when the cooldown has expired and cache is stale");
 });
 
+test("allows re-fetch when lastRefreshedAt is exactly 1 ms past the cooldown boundary", async () => {
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  // 1 ms beyond the cooldown window — elapsed > REFRESH_COOLDOWN_MS so the guard must not fire
+  const justExpired = new Date(Date.now() - REFRESH_COOLDOWN_MS - 1);
+
+  const staleJustExpired = makeAssessment({
+    lastSearchedAt: twoDaysAgo,
+    lastRefreshedAt: justExpired,
+    partialData: true,
+  });
+
+  storage.getAssessmentByPostcode = async () => staleJustExpired;
+
+  let externalFetchAttempted = false;
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url.includes("postcodes.io") || url.includes("overpass") || url.includes("police.uk")) {
+      externalFetchAttempted = true;
+    }
+    return new Response(JSON.stringify({ status: 500 }), { status: 500 });
+  };
+
+  const res = await originalFetch(`${serverUrl}/api/assess`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ postcode: POSTCODE }),
+  });
+
+  assert.notEqual(res.status, 200,
+    "should not serve cached data when cooldown has just expired (1 ms past boundary)");
+  assert.equal(externalFetchAttempted, true,
+    "must attempt external API calls when lastRefreshedAt is 1 ms past the cooldown boundary");
+});
+
+test("serves cached data when lastRefreshedAt is just inside the cooldown boundary", async () => {
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+  // 5 seconds inside the cooldown window — elapsed is clearly < REFRESH_COOLDOWN_MS.
+  // Using 5 s (not 1 ms) keeps the test deterministic: the HTTP round-trip is ~5–20 ms
+  // so a 1 ms margin would flip to the expired side before the route evaluates it.
+  const almostExpired = new Date(Date.now() - REFRESH_COOLDOWN_MS + 5000);
+
+  const staleAlmostExpired = makeAssessment({
+    lastSearchedAt: twoDaysAgo,
+    lastRefreshedAt: almostExpired,
+    partialData: true,
+  });
+
+  let fetchCalled = false;
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    throw new Error("external fetch must not be called when cooldown is still active");
+  };
+
+  storage.getAssessmentByPostcode = async () => staleAlmostExpired;
+  storage.updateLastSearchedAt = async () => {};
+  storage.recordUserSearch = async () => {};
+
+  const res = await originalFetch(`${serverUrl}/api/assess`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ postcode: POSTCODE }),
+  });
+
+  assert.equal(res.status, 200,
+    "should return cached data when lastRefreshedAt is 1 ms before the cooldown boundary");
+  const body = await res.json();
+  assert.equal(body.shareToken, staleAlmostExpired.shareToken,
+    "should return the same cached assessment, not a re-fetched one");
+  assert.equal(fetchCalled, false,
+    "must not call any external APIs when cooldown is still active (1 ms before boundary)");
+});
+
 test("same postcode submitted twice in quick succession — second call returns same cached record without re-fetch", async () => {
   const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);

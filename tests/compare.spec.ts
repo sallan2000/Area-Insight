@@ -213,7 +213,8 @@ test.describe("Compare page — postcode validation", () => {
   }) => {
     await page.goto("/compare");
 
-    await page.route("**api.postcodes.io**", (route) => route.abort());
+    // The frontend now calls the backend proxy; abort those requests to simulate a network failure.
+    await page.route("**/api/postcodes/*/validate", (route) => route.abort());
 
     await page.getByPlaceholder("e.g. SW1A 1AA").fill(VALID_PC1);
     await page.getByPlaceholder("e.g. E1 6AN").fill(VALID_PC2);

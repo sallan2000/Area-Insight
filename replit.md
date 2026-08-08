@@ -78,6 +78,10 @@ The `shared/` directory contains code used by both frontend and backend:
 - **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates for England (E01 codes) and Wales (W01 codes). Falls back to Scottish council lookup or outcode heuristic.
 - **`server/data/scotland-council-tax-bands.json`**: 32 Scottish local authority (S12000xxx) to modal council tax band mappings. Sourced from NRS Dwellings by Council Tax Band statistics (2024). Used as fallback for Scottish postcodes where VOA data doesn't apply (Scotland is SAA jurisdiction). Lookup key is `codes.admin_district` from postcodes.io. Source label: "SAA (council area, 2024)".
 
+### Static Data Files
+- **`server/data/lsoa-council-tax-bands.json`**: 35,672 LSOA-to-modal-council-tax-band mappings from VOA CTSOP1.1 (2024). Loaded at server startup. Provides accurate council tax band estimates for England (E01 codes) and Wales (W01 codes). Falls back to Scottish council lookup or outcode heuristic.
+- **`server/data/scotland-council-tax-bands.json`**: 32 Scottish local authority (S12000xxx) to modal council tax band mappings. Sourced from NRS Dwellings by Council Tax Band statistics (2024). Used as fallback for Scottish postcodes where VOA data doesn't apply (Scotland is SAA jurisdiction). Lookup key is `codes.admin_district` from postcodes.io. Source label: "SAA (council area, 2024)".
+
 ### Environmental Quality Data
 - **Air Quality**: Proper UK DAQI (1-10 scale) using DEFRA bands for PM2.5, PM10, NO₂, O₃. Primary source: DEFRA UK-AIR nearest station. Fallback: location-based heuristic estimating pollutant levels from urban classification and proximity to major roads
 - **Noise Estimation**: OSM proximity analysis — base 45 dB (quiet residential) with increments for motorways (+20 dB within 100m), A-roads (+14 dB), railways (+10 dB), airports (+12 dB), nightlife density (+5 dB). Night = day - 12 dB. Classifications: Quiet (<50), Moderate (50-60), Loud (60-70), Very Loud (>70)

@@ -33,7 +33,7 @@ function makeAssessment(overrides: {
     rawMetrics: {},
     scores: {},
     userId: null,
-    createdAt: new Date("2025-01-01"),
+    createdAt: new Date(),
     ...overrides,
   } as any;
 }

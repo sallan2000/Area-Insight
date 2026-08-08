@@ -1,7 +1,7 @@
 /**
  * End-to-end Playwright tests for the Compare page postcode validation flow.
  *
- * Covers seven scenarios:
+ * Covers nine scenarios:
  *  1. Valid pair of postcodes → both assessments load and comparison results appear.
  *  2. One invalid postcode → error toast shown, no /api/assess call made.
  *  3. Both postcodes invalid simultaneously → "Postcodes not found" toast, no /api/assess call.
@@ -9,6 +9,8 @@
  *  5. Same postcode in both fields → inline warning visible, Compare button disabled.
  *  6. Same postcode with different spacing/casing → warning still appears (normalisation).
  *  7. Correcting second field to a different postcode → warning disappears, button re-enables.
+ *  8. pc2 invalid → toast names pc2 specifically, no /api/assess call, user stays on /compare.
+ *  9. pc1 invalid → toast names pc1 specifically, no /api/assess call, user stays on /compare.
  *
  * Run with: npx playwright test tests/compare.spec.ts
  */
@@ -85,6 +87,94 @@ test.describe("Compare page — postcode validation", () => {
     expect(assessCalls.length).toBe(0);
   });
 
+  test("pc2 invalid: toast names the specific unrecognised postcode and user stays on /compare", async ({
+    page,
+  }) => {
+    const assessCalls: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/api/assess") && req.method() === "POST") {
+        assessCalls.push(req.url());
+      }
+    });
+
+    await page.goto("/compare");
+    expect(new URL(page.url()).pathname).toBe("/compare");
+
+    await page.getByPlaceholder("e.g. SW1A 1AA").fill(VALID_PC1);
+    await page.getByPlaceholder("e.g. E1 6AN").fill(INVALID_PC);
+
+    await page.getByRole("button", { name: "Compare Areas" }).click();
+
+    // Wait for a toast to appear
+    const toastLocator = page
+      .locator("[data-radix-toast-viewport] li, [role='status'], [role='alert']")
+      .first();
+    await expect(toastLocator).toBeVisible({ timeout: 15_000 });
+
+    // Toast title is the singular "Postcode not found" (not the both-invalid plural)
+    const pageContent = await page.content();
+    expect(pageContent).toContain("Postcode not found");
+
+    // Description contains the specific invalid postcode that was rejected
+    const normalisedInvalid = INVALID_PC.replace(/\s+/g, "").toUpperCase();
+    expect(
+      pageContent.includes(normalisedInvalid) || pageContent.includes(INVALID_PC),
+    ).toBeTruthy();
+
+    // Comparison results must NOT appear
+    await expect(
+      page.getByRole("heading", { name: "Liveability Showdown" }),
+    ).not.toBeVisible();
+
+    // User stays on /compare
+    expect(new URL(page.url()).pathname).toBe("/compare");
+
+    // No backend assessment call was made
+    expect(assessCalls.length).toBe(0);
+  });
+
+  test("pc1 invalid: toast names the specific unrecognised postcode and user stays on /compare", async ({
+    page,
+  }) => {
+    const assessCalls: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/api/assess") && req.method() === "POST") {
+        assessCalls.push(req.url());
+      }
+    });
+
+    await page.goto("/compare");
+    expect(new URL(page.url()).pathname).toBe("/compare");
+
+    // Put the invalid postcode in the FIRST field this time
+    await page.getByPlaceholder("e.g. SW1A 1AA").fill(INVALID_PC);
+    await page.getByPlaceholder("e.g. E1 6AN").fill(VALID_PC2);
+
+    await page.getByRole("button", { name: "Compare Areas" }).click();
+
+    const toastLocator = page
+      .locator("[data-radix-toast-viewport] li, [role='status'], [role='alert']")
+      .first();
+    await expect(toastLocator).toBeVisible({ timeout: 15_000 });
+
+    // Toast title is the singular form
+    const pageContent = await page.content();
+    expect(pageContent).toContain("Postcode not found");
+
+    // Description contains the specific invalid postcode that was rejected
+    const normalisedInvalid = INVALID_PC.replace(/\s+/g, "").toUpperCase();
+    expect(
+      pageContent.includes(normalisedInvalid) || pageContent.includes(INVALID_PC),
+    ).toBeTruthy();
+
+    await expect(
+      page.getByRole("heading", { name: "Liveability Showdown" }),
+    ).not.toBeVisible();
+
+    expect(new URL(page.url()).pathname).toBe("/compare");
+    expect(assessCalls.length).toBe(0);
+  });
+
   test("both postcodes invalid shows 'Postcodes not found' toast and does not call /api/assess", async ({
     page,
   }) => {
@@ -123,7 +213,8 @@ test.describe("Compare page — postcode validation", () => {
   }) => {
     await page.goto("/compare");
 
-    await page.route("**api.postcodes.io**", (route) => route.abort());
+    // The frontend now calls the backend proxy; abort those requests to simulate a network failure.
+    await page.route("**/api/postcodes/*/validate", (route) => route.abort());
 
     await page.getByPlaceholder("e.g. SW1A 1AA").fill(VALID_PC1);
     await page.getByPlaceholder("e.g. E1 6AN").fill(VALID_PC2);

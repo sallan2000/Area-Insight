@@ -2,6 +2,7 @@ import { useParams, useLocation } from "wouter";
 import { useAssessment } from "@/hooks/use-assess";
 import { 
   Shield, 
+  ShieldCheck,
   Bus, 
   GraduationCap, 
   Store, 
@@ -44,6 +45,7 @@ import { UserMenu } from "@/components/UserMenu";
 import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
+import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
 
@@ -154,20 +156,37 @@ export default function Report() {
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
 
   const reportUrl = `${window.location.origin}/report/${token}`;
 
-  const exportAsImage = async () => {
-    if (!reportRef.current || !report) return;
-    try {
-      const { toPng } = await import('html-to-image');
-      const dataUrl = await toPng(reportRef.current, { 
-        cacheBust: true,
-        backgroundColor: '#f9fafb',
-        filter: (node) => node.tagName !== 'IFRAME'
+  const captureExportView = async (): Promise<string> => {
+    const { toPng } = await import('html-to-image');
+    return new Promise<string>((resolve, reject) => {
+      setIsExporting(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
+          try {
+            if (!exportRef.current) { reject(new Error("Export view not ready")); setIsExporting(false); return; }
+            const dataUrl = await toPng(exportRef.current, { cacheBust: true, backgroundColor: '#ffffff' });
+            setIsExporting(false);
+            resolve(dataUrl);
+          } catch (e) {
+            setIsExporting(false);
+            reject(e);
+          }
+        });
       });
+    });
+  };
+
+  const exportAsImage = async () => {
+    if (!report) return;
+    try {
+      const dataUrl = await captureExportView();
       const link = document.createElement('a');
       link.download = `ScoreMyStreet-${report.postcode}.png`;
       link.href = dataUrl;
@@ -180,37 +199,27 @@ export default function Report() {
   };
 
   const exportAsPDF = async () => {
-    if (!reportRef.current || !report) return;
+    if (!report) return;
     try {
-      const [{ toPng }, { jsPDF }] = await Promise.all([
-        import('html-to-image'),
+      const [dataUrl, { jsPDF }] = await Promise.all([
+        captureExportView(),
         import('jspdf'),
       ]);
-      const dataUrl = await toPng(reportRef.current, { 
-        cacheBust: true,
-        backgroundColor: '#f9fafb',
-        filter: (node) => node.tagName !== 'IFRAME'
-      });
-      
       const pdf = new jsPDF('p', 'mm', 'a4');
       const imgProps = pdf.getImageProperties(dataUrl);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
       const pageHeight = pdf.internal.pageSize.getHeight();
       let remainingHeight = pdfHeight;
       let position = 0;
-
       pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
       remainingHeight -= pageHeight;
-
       while (remainingHeight > 0) {
         position = remainingHeight - pdfHeight;
         pdf.addPage();
         pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
         remainingHeight -= pageHeight;
       }
-      
       pdf.save(`ScoreMyStreet-${report.postcode}.pdf`);
       toast({ title: "PDF exported!", description: "Your report has been saved as a PDF." });
     } catch (err) {
@@ -345,13 +354,13 @@ export default function Report() {
           </DialogHeader>
           <div className="space-y-6 py-4">
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" className="gap-2" onClick={exportAsImage}>
+              <Button variant="outline" className="gap-2" onClick={exportAsImage} disabled={isExporting}>
                 <Download className="h-4 w-4" />
-                Export Image
+                {isExporting ? "Preparing…" : "Export Image"}
               </Button>
-              <Button variant="outline" className="gap-2" onClick={exportAsPDF}>
+              <Button variant="outline" className="gap-2" onClick={exportAsPDF} disabled={isExporting}>
                 <Download className="h-4 w-4" />
-                Export PDF
+                {isExporting ? "Preparing…" : "Export PDF"}
               </Button>
             </div>
 
@@ -488,6 +497,45 @@ export default function Report() {
             </div>
           )}
 
+          {raw.confidence && (
+            <div
+              className={`flex items-start gap-3 px-4 py-3 rounded-xl text-sm border ${
+                raw.confidence.overall === 'high'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : raw.confidence.overall === 'medium'
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+              data-testid="banner-confidence"
+            >
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold">
+                  Data confidence: <span className="uppercase">{raw.confidence.overall}</span>
+                </p>
+                <p className="text-xs leading-snug">
+                  {raw.confidence.flags.length > 0
+                    ? raw.confidence.flags.join(' ')
+                    : 'All components are based on live, measured data for this postcode.'}
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {Object.entries(raw.confidence.components).map(([k, v]: [string, any]) => (
+                    <span
+                      key={k}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        v === 'measured' ? 'bg-emerald-100 text-emerald-700'
+                        : v === 'estimated' ? 'bg-amber-100 text-amber-700'
+                        : 'bg-rose-100 text-rose-700'
+                      }`}
+                    >
+                      {k}: {v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Map Section */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Score Card */}
@@ -584,7 +632,13 @@ export default function Report() {
                   title="Safety"
                   score={scores.safety}
                   icon={<Shield className="w-6 h-6" />}
-                  description={raw.crimeDataUnavailable ? "Crime data not available for Scotland" : `${raw.crimeCount || 0} incidents reported in the last 12 months`}
+                  description={
+                    raw.safetySource === 'simd2020' && raw.scottishSafety
+                      ? `SIMD 2020 crime rank ${raw.scottishSafety.crimeRank} of ~6,976 (annual, Data Zone)`
+                      : raw.crimeDataUnavailable
+                      ? "Crime data not available for Scotland"
+                      : `${raw.crimeCount || 0} incidents reported in the last 12 months`
+                  }
                   status={getOverallGrade(scores.safety)}
                   trend={raw.crimeDataUnavailable ? undefined : (raw.crimeTrend === 'up' ? 'up' : 'down')}
                   isActive={activeTab === 'safety'}
@@ -595,7 +649,7 @@ export default function Report() {
                   title="Schools"
                   score={scores.schools}
                   icon={<GraduationCap className="w-6 h-6" />}
-                  description={raw.overpassFailed ? "Map data temporarily unavailable" : `${raw.schools?.count || 0} schools nearby`}
+                  description={raw.overpassFailed ? "Map data temporarily unavailable" : `${raw.schools?.count || 0} schools nearby (${raw.schools?.primaryCount || 0} primary, ${raw.schools?.secondaryCount || 0} secondary)`}
                   status={getOverallGrade(scores.schools)}
                   isActive={activeTab === 'schools'}
                   onClick={() => setActiveTab('schools')}
@@ -646,7 +700,7 @@ export default function Report() {
                         <p className="text-xl font-bold text-foreground">
                           {activeTab === 'safety' ? (raw.crimeDataUnavailable ? "No data" : `${raw.crimeCount} incidents`) : 
                            activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` : 
-                           activeTab === 'schools' ? `${raw.schools?.count || 0} educational facilities` : 
+                           activeTab === 'schools' ? `${raw.schools?.count || 0} schools nearby` : 
                            `${raw.amenities?.totalCount || 0} local services`}
                         </p>
                       </div>
@@ -659,11 +713,42 @@ export default function Report() {
                       <ul className="space-y-2">
                         {activeTab === 'safety' && (
                           <div className="space-y-6">
+                            {raw.safetySource === 'simd2020' && raw.scottishSafety && (
+                              <div className="space-y-3">
+                                <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                                  <div className="flex items-start justify-between gap-2 mb-2">
+                                    <h5 className="text-sm font-bold text-blue-800">Scottish crime data (SIMD 2020v2)</h5>
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full whitespace-nowrap">Annual · Data Zone</span>
+                                  </div>
+                                  <p className="text-xs text-blue-800 mb-3">
+                                    Based on the Scottish Government's SIMD 2020v2 Crime domain for this postcode's Data Zone
+                                    (rank <span className="font-bold">{raw.scottishSafety.crimeRank}</span> of ~6,976 — where 1 is the most crime-affected).
+                                    {raw.scottishSafety.crimeRate != null && <> Recorded crime rate: <span className="font-semibold">{raw.scottishSafety.crimeRate} per 10,000 residents</span>.</>}
+                                  </p>
+                                  <p className="text-[10px] text-blue-600 mt-2">
+                                    ⚠ This is annual, small-area (≈700 people) statistics — <strong>not</strong> realtime street crime. It is included in the liveability score on the same scale as the rest of the UK. Source: Scottish Government SIMD 2020v2.
+                                  </p>
+                                </div>
+                                {raw.scotCrimeContext && (
+                                  <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-200">
+                                    <h5 className="text-sm font-bold text-blue-800 mb-1">Council Area Context</h5>
+                                    <p className="text-xs text-blue-800 mb-3">
+                                      In {raw.scotCrimeContext.year}, <span className="font-semibold">{raw.scotCrimeContext.council}</span> recorded{" "}
+                                      <span className="font-bold">{raw.scotCrimeContext.ratePerThousand} crimes per 1,000 residents</span>{" "}
+                                      (Scotland average: {raw.scotCrimeContext.scotlandAvgPerThousand} per 1,000).
+                                    </p>
+                                    <p className="text-[10px] text-blue-600 mt-2">
+                                      ⚠ Covers the whole {raw.scotCrimeContext.council} council area, not this postcode. Reference only.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {raw.crimeDataUnavailable && (
                               <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                                <h5 className="text-sm font-bold text-amber-800 mb-1">Crime data unavailable</h5>
+                                <h5 className="text-sm font-bold text-amber-800 mb-1">Street-level crime data unavailable</h5>
                                 <p className="text-xs text-amber-700">
-                                  Police Scotland does not publish crime statistics through the national police.uk API used by ScoreMyStreet. No crime figures are available for Scottish postcodes.
+                                  Police Scotland does not publish street-level crime statistics through the national police.uk API, and the SIMD crime proxy dataset is not loaded on this server. Safety is excluded from the liveability score for this Scottish postcode.
                                 </p>
                               </div>
                             )}
@@ -723,6 +808,16 @@ export default function Report() {
                                 <p className="text-xs text-amber-700">Map data temporarily unavailable — scores may be lower than usual. Try refreshing the report later.</p>
                               </div>
                             )}
+                            <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                              <h5 className="text-sm font-bold text-blue-800 mb-1">Education options</h5>
+                              <p className="text-xs text-blue-700">
+                                {raw.schools?.count || 0} schools within reach — {raw.schools?.primaryCount || 0} primary, {raw.schools?.secondaryCount || 0} secondary
+                                {raw.schools?.avgDistanceKm != null ? ` (avg ${raw.schools.avgDistanceKm} km away)` : ""}.
+                                {raw.schools?.hasRealRatings
+                                  ? " Ofsted ratings are included where available and nudge the score."
+                                  : " This measures the number, mix and proximity of schools — a comparable rating feed isn't published for this nation, so quality isn't scored here."}
+                              </p>
+                            </div>
                             <div>
                               <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Primary & Nursery</h5>
                               {renderAmenityList(raw.schools?.primaryList || [], 'primary_school')}
@@ -802,7 +897,6 @@ export default function Report() {
                     size="sm" 
                     className="bg-white hover:bg-gray-100"
                     onClick={() => {
-                      // Navigate back to home with the postcode to trigger a new search
                       setLocation(`/?postcode=${pc}`);
                     }}
                   >
@@ -814,6 +908,23 @@ export default function Report() {
           )}
         </main>
       </div>
+
+      {/* Hidden export-quality render — all sections expanded, no scroll limits */}
+      {isExporting && (
+        <div
+          ref={exportRef}
+          style={{ position: "fixed", left: -9999, top: 0, zIndex: -1, pointerEvents: "none" }}
+          aria-hidden="true"
+        >
+          <ReportExportView
+            report={report}
+            scores={scores}
+            raw={raw}
+            overallScore={overallScore}
+            safetyBreakdownItems={safetyBreakdownItems}
+          />
+        </div>
+      )}
     </div>
   );
 }

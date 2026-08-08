@@ -299,4 +299,54 @@ test.describe("Report page — data quality badges and banners", () => {
       noiseCard.locator('[data-testid="notice-overpass-failed-noise"]'),
     ).toBeVisible();
   });
+
+  // -------------------------------------------------------------------------
+  // Test 4 (failure path): banner stays visible when the refresh POST fails
+  // -------------------------------------------------------------------------
+  test("banner stays visible and error toast appears when refresh returns an error", async ({
+    page,
+  }) => {
+    // Seed with airQualityEstimated=true so the banner is shown.
+    // partialData=true so the Refresh button is rendered (unauthenticated path).
+    const token = await seedAssessment(
+      pool,
+      "W1B 1AA",
+      makeRawMetrics({ airQualityEstimated: true, overpassFailed: false }),
+      true,
+    );
+
+    await page.goto(`/report/${token}`);
+
+    await expect(
+      page.locator('[data-testid="heading-environmental"]'),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // Banner must be present before we attempt the refresh
+    const banner = page.locator('[data-testid="banner-data-quality"]');
+    await expect(banner).toBeVisible();
+
+    // Intercept the refresh POST and force a 500 error
+    await page.route(`**/api/assess/token/${token}/refresh`, (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Internal server error" }),
+      }),
+    );
+
+    // Click the refresh button
+    await page.locator('[data-testid="button-refresh-report"]').click();
+
+    // Wait for the error toast title — its appearance proves the 500 response was
+    // received and handleRefresh's catch block has fully executed.
+    const toastTitle = page
+      .locator('[data-component-name="ToastTitle"]')
+      .filter({ hasText: "Refresh failed" })
+      .first();
+    await expect(toastTitle).toBeVisible({ timeout: 10_000 });
+
+    // NOW assert the banner: after the failure path ran, it must STILL be visible.
+    // A regression that hides the banner on any error response would fail here.
+    await expect(banner).toBeVisible();
+  });
 });

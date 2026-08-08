@@ -34,6 +34,7 @@ export class DatabaseStorage implements IStorage {
           rawMetrics: insertAssessment.rawMetrics,
           scores: insertAssessment.scores,
           partialData: insertAssessment.partialData ?? false,
+          createdAt: new Date(),
           lastSearchedAt: new Date(),
           ...(markRefreshed ? { lastRefreshedAt: new Date() } : {}),
         })

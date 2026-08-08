@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: compare.spec.ts >> Compare page — postcode validation >> valid pair of postcodes loads assessments and shows comparison results
-- Location: tests/compare.spec.ts:21:3
+- Name: compare.spec.ts >> Compare page — postcode validation >> same postcode with different spacing/casing still shows warning (normalisation)
+- Location: tests/compare.spec.ts:178:3
 
 # Error details
 

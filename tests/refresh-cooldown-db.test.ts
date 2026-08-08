@@ -214,7 +214,93 @@ test("allows the first refresh when lastRefreshedAt is null (report has never be
 });
 
 // ---------------------------------------------------------------------------
-// Scenario 4 — unauthenticated request is blocked before cooldown check
+// Scenario 4 — boundary: refresh at exactly the cooldown boundary is allowed
+//
+// lastRefreshedAt = now - REFRESH_COOLDOWN_MS  →  elapsed === REFRESH_COOLDOWN_MS
+// The comparison is `elapsed < REFRESH_COOLDOWN_MS`, so this should NOT be
+// blocked (the window has fully elapsed).
+// ---------------------------------------------------------------------------
+
+test("allows refresh when lastRefreshedAt is exactly REFRESH_COOLDOWN_MS ago (boundary — elapsed === cooldown)", async () => {
+  // Subtract an extra millisecond to guarantee we are at or past the boundary
+  // even if a few µs elapse between constructing the date and the route reading
+  // Date.now() during the request.
+  const atBoundary = new Date(Date.now() - REFRESH_COOLDOWN_MS - 1);
+
+  storage.getAssessmentByToken = async () => makeAssessment(atBoundary);
+
+  let externalFetchAttempted = false;
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (
+      url.includes("postcodes.io") ||
+      url.includes("overpass") ||
+      url.includes("police.uk")
+    ) {
+      externalFetchAttempted = true;
+    }
+    return new Response(JSON.stringify({ status: 500 }), { status: 500 });
+  };
+
+  const res = await originalFetch(
+    `${serverUrl}/api/assess/token/${TOKEN}/refresh`,
+    { method: "POST" },
+  );
+
+  assert.notEqual(
+    res.status,
+    429,
+    "should not return 429 when elapsed time equals or exceeds REFRESH_COOLDOWN_MS",
+  );
+  assert.equal(
+    externalFetchAttempted,
+    true,
+    "must attempt external API calls when the cooldown window has fully elapsed",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 5 — boundary: refresh just before cooldown expires is still blocked
+//
+// lastRefreshedAt = now - REFRESH_COOLDOWN_MS + 30_000  →  30 s still remain.
+// The comparison is `elapsed < REFRESH_COOLDOWN_MS`, so this SHOULD be blocked.
+// (A 1 ms margin is theoretically correct but unreliable: JS/HTTP overhead means
+// the route's own Date.now() call can push elapsed past the boundary before the
+// assertion runs.  A 30-second margin is unambiguously inside the window while
+// still testing the near-boundary branch.)
+// ---------------------------------------------------------------------------
+
+test("returns 429 when lastRefreshedAt is 30 s inside the cooldown window (near-boundary — still blocked)", async () => {
+  // 30 seconds before the window fully elapses → still within the cooldown
+  const thirtySecondsBeforeBoundary = new Date(Date.now() - REFRESH_COOLDOWN_MS + 30_000);
+
+  storage.getAssessmentByToken = async () => makeAssessment(thirtySecondsBeforeBoundary);
+
+  let externalFetchCalled = false;
+  globalThis.fetch = async () => {
+    externalFetchCalled = true;
+    throw new Error("external fetch must not be called during cooldown");
+  };
+
+  const res = await originalFetch(
+    `${serverUrl}/api/assess/token/${TOKEN}/refresh`,
+    { method: "POST" },
+  );
+
+  assert.equal(
+    res.status,
+    429,
+    "should return 429 when 30 s still remain in the cooldown window",
+  );
+  assert.equal(
+    externalFetchCalled,
+    false,
+    "must not call external APIs while the cooldown window has not fully elapsed",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 6 — unauthenticated request is blocked before cooldown check
 // ---------------------------------------------------------------------------
 
 test("returns 401 for unauthenticated refresh attempt regardless of cooldown state", async () => {

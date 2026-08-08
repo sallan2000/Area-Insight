@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: compare.spec.ts >> Compare page — postcode validation >> one invalid postcode shows error toast and does not call /api/assess
-- Location: tests/compare.spec.ts:51:3
+- Name: compare.spec.ts >> Compare page — postcode validation >> same postcode in both fields shows inline warning and disables Compare button
+- Location: tests/compare.spec.ts:156:3
 
 # Error details
 

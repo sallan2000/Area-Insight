@@ -145,3 +145,71 @@ test("POST /api/admin/refresh-partial — correct Bearer token → 200 (empty ba
   const body = await res.json();
   assert.equal(typeof body.refreshed, "number", "response should include a refreshed count");
 });
+
+// ---------------------------------------------------------------------------
+// ADMIN_SECRET not configured at all → 403 (not 401)
+//
+// The requireAdmin middleware reads process.env.ADMIN_SECRET at request time,
+// so temporarily deleting the env var around each fetch is sufficient —
+// no separate server instance is needed.
+// ---------------------------------------------------------------------------
+
+/** Run `fn` with ADMIN_SECRET removed from the environment, then restore it. */
+async function withoutAdminSecret<T>(fn: () => Promise<T>): Promise<T> {
+  const saved = process.env.ADMIN_SECRET;
+  delete process.env.ADMIN_SECRET;
+  try {
+    return await fn();
+  } finally {
+    if (saved !== undefined) {
+      process.env.ADMIN_SECRET = saved;
+    } else {
+      delete process.env.ADMIN_SECRET;
+    }
+  }
+}
+
+test("GET /api/admin/partial-assessments — ADMIN_SECRET absent → 403", async () => {
+  stubPartialAssessments();
+  const res = await withoutAdminSecret(() =>
+    originalFetch(`${serverUrl}/api/admin/partial-assessments`)
+  );
+  assert.equal(res.status, 403, "should return 403 when ADMIN_SECRET is not configured");
+  const body = await res.json();
+  assert.ok(body.message, "should include an error message");
+});
+
+test("GET /api/admin/partial-assessments — ADMIN_SECRET absent, token supplied → 403", async () => {
+  stubPartialAssessments();
+  const res = await withoutAdminSecret(() =>
+    originalFetch(`${serverUrl}/api/admin/partial-assessments`, {
+      headers: { Authorization: "Bearer any-token" },
+    })
+  );
+  assert.equal(res.status, 403, "should return 403 regardless of token when ADMIN_SECRET is not configured");
+  const body = await res.json();
+  assert.ok(body.message, "should include an error message");
+});
+
+test("POST /api/admin/refresh-partial — ADMIN_SECRET absent → 403", async () => {
+  stubPartialAssessments();
+  const res = await withoutAdminSecret(() =>
+    originalFetch(`${serverUrl}/api/admin/refresh-partial`, { method: "POST" })
+  );
+  assert.equal(res.status, 403, "should return 403 when ADMIN_SECRET is not configured");
+  const body = await res.json();
+  assert.ok(body.message, "should include an error message");
+});
+
+test("POST /api/admin/refresh-partial — ADMIN_SECRET absent, token supplied → 403", async () => {
+  stubPartialAssessments();
+  const res = await withoutAdminSecret(() =>
+    originalFetch(`${serverUrl}/api/admin/refresh-partial`, {
+      method: "POST",
+      headers: { Authorization: "Bearer any-token" },
+    })
+  );
+  assert.equal(res.status, 403, "should return 403 regardless of token when ADMIN_SECRET is not configured");
+  const body = await res.json();
+  assert.ok(body.message, "should include an error message");
+});

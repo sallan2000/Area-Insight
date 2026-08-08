@@ -5,4 +5,9 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .env
-.env.*\n# Playwright test artefacts\ntest-results/
+.env.*
+# Playwright test artefacts
+test-results/
+
+# Local working notes — never push to GitHub (migration plan, etc.)
+RESUME.md

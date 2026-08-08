@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { db } from "./db";
 import {
   assessments,
@@ -11,9 +12,11 @@ import {
 import { eq, desc } from "drizzle-orm";
 
 export interface IStorage {
-  createAssessment(assessment: InsertAssessment, existingId?: number): Promise<Assessment>;
+  createAssessment(assessment: InsertAssessment, existingId?: number, markRefreshed?: boolean): Promise<Assessment>;
   getAssessment(id: number): Promise<Assessment | undefined>;
+  getAssessmentByToken(token: string): Promise<Assessment | undefined>;
   getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined>;
+  getPartialAssessments(): Promise<Assessment[]>;
   recordUserSearch(userId: string, assessmentId: number): Promise<void>;
   getAssessmentsByUser(userId: string): Promise<Assessment[]>;
   updateLastSearchedAt(id: number): Promise<void>;
@@ -21,7 +24,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async createAssessment(insertAssessment: InsertAssessment, existingId?: number): Promise<Assessment> {
+  async createAssessment(insertAssessment: InsertAssessment, existingId?: number, markRefreshed = false): Promise<Assessment> {
     if (existingId !== undefined) {
       const [updated] = await db
         .update(assessments)
@@ -32,6 +35,7 @@ export class DatabaseStorage implements IStorage {
           scores: insertAssessment.scores,
           partialData: insertAssessment.partialData ?? false,
           lastSearchedAt: new Date(),
+          ...(markRefreshed ? { lastRefreshedAt: new Date() } : {}),
         })
         .where(eq(assessments.id, existingId))
         .returning();
@@ -39,7 +43,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     const [assessment] = await db.insert(assessments)
-      .values(insertAssessment)
+      .values({ ...insertAssessment, shareToken: randomUUID() })
       .returning();
     return assessment;
   }
@@ -51,12 +55,26 @@ export class DatabaseStorage implements IStorage {
     return assessment;
   }
 
+  async getAssessmentByToken(token: string): Promise<Assessment | undefined> {
+    const [assessment] = await db.select()
+      .from(assessments)
+      .where(eq(assessments.shareToken, token));
+    return assessment;
+  }
+
   async getAssessmentByPostcode(postcode: string): Promise<Assessment | undefined> {
     const [assessment] = await db.select()
       .from(assessments)
       .where(eq(assessments.postcode, postcode))
       .limit(1);
     return assessment;
+  }
+
+  async getPartialAssessments(): Promise<Assessment[]> {
+    return db.select()
+      .from(assessments)
+      .where(eq(assessments.partialData, true))
+      .orderBy(desc(assessments.lastSearchedAt));
   }
 
   async recordUserSearch(userId: string, assessmentId: number): Promise<void> {

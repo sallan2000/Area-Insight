@@ -72,32 +72,35 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     ([, config]) => config.theme || config.color
   )
 
-  if (!colorConfig.length) {
-    return null
-  }
+  React.useEffect(() => {
+    if (!colorConfig.length) return
 
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
-${prefix} [data-chart=${id}] {
-${colorConfig
-  .map(([key, itemConfig]) => {
-    const color =
-      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
-      itemConfig.color
-    return color ? `  --color-${key}: ${color};` : null
+    const applyColors = () => {
+      const el = document.querySelector<HTMLElement>(`[data-chart="${id}"]`)
+      if (!el) return
+      const isDark = document.documentElement.classList.contains("dark")
+      const theme = isDark ? "dark" : "light"
+      for (const [key, itemConfig] of colorConfig) {
+        const color =
+          itemConfig.theme?.[theme as keyof typeof itemConfig.theme] ||
+          itemConfig.color
+        if (color) el.style.setProperty(`--color-${key}`, color)
+        else el.style.removeProperty(`--color-${key}`)
+      }
+    }
+
+    applyColors()
+
+    const observer = new MutationObserver(applyColors)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    })
+
+    return () => observer.disconnect()
   })
-  .join("\n")}
-}
-`
-          )
-          .join("\n"),
-      }}
-    />
-  )
+
+  return null
 }
 
 const ChartTooltip = RechartsPrimitive.Tooltip

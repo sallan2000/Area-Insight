@@ -2,13 +2,11 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, buildUrl, type AssessInput } from "@shared/routes";
 import { useLocation } from "wouter";
 
-// Create a new assessment
 export function useCreateAssessment() {
   const [, setLocation] = useLocation();
   
   return useMutation({
     mutationFn: async (data: AssessInput) => {
-      // Validate locally first (optional but good practice)
       const validated = api.assess.create.input.parse(data);
       
       const res = await fetch(api.assess.create.path, {
@@ -18,9 +16,9 @@ export function useCreateAssessment() {
       });
 
       if (!res.ok) {
-        if (res.status === 400) {
-          const error = api.assess.create.responses[400].parse(await res.json());
-          throw new Error(error.message);
+        if (res.status === 400 || res.status === 422) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.message || "Invalid request");
         }
         throw new Error("Failed to create assessment");
       }
@@ -28,20 +26,18 @@ export function useCreateAssessment() {
       return api.assess.create.responses[201].parse(await res.json());
     },
     onSuccess: (data) => {
-      // Navigate to results page
-      setLocation(`/report/${data.id}`);
+      setLocation(`/report/${data.shareToken}`);
     },
   });
 }
 
-// Fetch a specific assessment by ID
-export function useAssessment(id: number) {
+export function useAssessment(token: string | null | undefined) {
   return useQuery({
-    queryKey: [api.assess.get.path, id],
+    queryKey: [api.assess.get.path, token],
     queryFn: async () => {
-      if (!id) throw new Error("ID is required");
+      if (!token) throw new Error("Token is required");
       
-      const url = buildUrl(api.assess.get.path, { id });
+      const url = buildUrl(api.assess.get.path, { token });
       const res = await fetch(url);
       
       if (res.status === 404) return null;
@@ -49,6 +45,6 @@ export function useAssessment(id: number) {
       
       return api.assess.get.responses[200].parse(await res.json());
     },
-    enabled: !!id && !isNaN(id),
+    enabled: !!token,
   });
 }

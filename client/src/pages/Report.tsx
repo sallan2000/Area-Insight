@@ -21,7 +21,8 @@ import {
   Building2,
   RefreshCw,
 } from "lucide-react";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useId } from "react";
+import { setRule, removeRule } from "@/lib/dynamic-styles";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScoreGauge } from "@/components/ScoreGauge";
 import { MetricCard } from "@/components/MetricCard";
@@ -47,10 +48,19 @@ import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
 
 
+function CrimeBar({ pct, color }: { pct: number; color: string }) {
+  const uid = useId().replace(/:/g, "");
+  useEffect(() => {
+    setRule(`crime-bar-${uid}`, `[data-bar-id="${uid}"] { width: ${pct}%; }`);
+    return () => removeRule(`crime-bar-${uid}`);
+  }, [uid, pct]);
+  return <div data-bar-id={uid} className={`${color} h-1.5 rounded-full`} />;
+}
+
 export default function Report() {
-  const { id } = useParams();
+  const { id: token } = useParams();
   const [, setLocation] = useLocation();
-  const { data: report, isLoading, error } = useAssessment(Number(id));
+  const { data: report, isLoading, error } = useAssessment(token);
   const { isAuthenticated } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
@@ -121,15 +131,20 @@ export default function Report() {
     if (!report) return;
     setIsRefreshing(true);
     try {
-      const res = await apiRequest("POST", `/api/assess/${id}/refresh`, {});
+      const res = await apiRequest("POST", `/api/assess/token/${token}/refresh`, {});
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message || "Refresh failed");
       }
-      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, Number(id)] });
+      await queryClient.invalidateQueries({ queryKey: [api.assess.get.path, token] });
       toast({ title: "Report refreshed!", description: "Latest data has been fetched for this area." });
     } catch (err: any) {
-      toast({ title: "Refresh failed", description: err.message, variant: "destructive" });
+      const isRateLimited = err.message?.toLowerCase().includes("refreshed recently") || err.message?.toLowerCase().includes("please wait");
+      toast({
+        title: isRateLimited ? "Refreshed recently" : "Refresh failed",
+        description: err.message,
+        variant: "destructive",
+      });
     } finally {
       setIsRefreshing(false);
     }
@@ -142,7 +157,7 @@ export default function Report() {
   const { toast } = useToast();
   const reportRef = useRef<HTMLDivElement>(null);
 
-  const reportUrl = `${window.location.origin}/report/${id}`;
+  const reportUrl = `${window.location.origin}/report/${token}`;
 
   const exportAsImage = async () => {
     if (!reportRef.current || !report) return;
@@ -292,7 +307,7 @@ export default function Report() {
     setIsSending(true);
     try {
       const res = await apiRequest("POST", "/api/share", {
-        assessmentId: Number(id),
+        assessmentId: report?.id,
         email
       });
 
@@ -452,6 +467,27 @@ export default function Report() {
       </header>
       <div ref={reportRef} className="bg-gray-50">
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+          {/* Data Quality Banner */}
+          {(raw.airQualityEstimated || raw.overpassFailed) && (
+            <div
+              className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800"
+              data-testid="banner-data-quality"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <div className="space-y-0.5">
+                <p className="font-semibold">Some data in this report is estimated</p>
+                <p className="text-xs text-amber-700 leading-snug">
+                  {[
+                    raw.airQualityEstimated && "Air quality index uses a location-based heuristic (no DEFRA monitoring station nearby).",
+                    raw.overpassFailed && "Map data was temporarily unavailable — transport, schools, amenities, and noise scores may be lower than usual.",
+                  ].filter(Boolean).join(" ")}
+                  {" "}Refresh the report to try fetching live data.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Map Section */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Score Card */}
@@ -635,10 +671,9 @@ export default function Report() {
                               <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 mb-4">
                                 <h5 className="text-sm font-bold text-primary mb-1">Police Neighbourhood: {raw.neighbourhood.name}</h5>
                                 {raw.neighbourhood.description && (
-                                  <div 
-                                    className="text-xs text-muted-foreground line-clamp-3"
-                                    dangerouslySetInnerHTML={{ __html: raw.neighbourhood.description }}
-                                  />
+                                  <p className="text-xs text-muted-foreground line-clamp-3">
+                                    {raw.neighbourhood.description.replace(/<[^>]*>/g, '')}
+                                  </p>
                                 )}
                               </div>
                             )}
@@ -651,9 +686,9 @@ export default function Report() {
                                       <span>{item.value}</span>
                                     </div>
                                     <div className="w-full bg-gray-200 rounded-full h-1.5">
-                                      <div 
-                                        className={`${item.color} h-1.5 rounded-full`} 
-                                        style={{ width: `${Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}%` }}
+                                      <CrimeBar
+                                        pct={Math.min(100, (item.value / (raw.crimeCount || 1)) * 100)}
+                                        color={item.color}
                                       />
                                     </div>
                                   </div>
@@ -740,7 +775,11 @@ export default function Report() {
 
           {/* Environment Section */}
           {raw.environment && (
-            <EnvironmentSection environment={raw.environment} />
+            <EnvironmentSection
+              environment={raw.environment}
+              airQualityEstimated={raw.airQualityEstimated}
+              overpassFailed={raw.overpassFailed}
+            />
           )}
 
           {raw.connectivity && (

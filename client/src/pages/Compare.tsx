@@ -21,7 +21,9 @@ import {
   ShoppingCart,
   ShoppingBag,
   Building2,
-  Zap
+  Zap,
+  FlaskConical,
+  AlertTriangle
 } from "lucide-react";
 import { 
   Dialog,
@@ -52,12 +54,19 @@ export default function Compare() {
     const params = new URLSearchParams(window.location.search);
     return params.get('pc2') || "";
   });
-  const [ids, setIds] = useState<{id1?: number, id2?: number}>({});
+  const [ids, setIds] = useState<{id1?: string, id2?: string}>({});
   const [isCreating, setIsCreating] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
-  const { data: report1 } = useAssessment(ids.id1!);
-  const { data: report2 } = useAssessment(ids.id2!);
+  const normalisePostcode = (pc: string) => pc.replace(/\s+/g, "").toUpperCase();
+  const samePostcode =
+    pc1.trim().length > 0 &&
+    pc2.trim().length > 0 &&
+    normalisePostcode(pc1) === normalisePostcode(pc2);
+
+  const { data: report1 } = useAssessment(ids.id1);
+  const { data: report2 } = useAssessment(ids.id2);
 
   const handleCompare = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +90,58 @@ export default function Compare() {
         variant: "destructive"
       });
       return;
+    }
+
+    const normalise = (pc: string) => pc.replace(/\s+/g, "").toUpperCase();
+    if (normalise(cleanPc1) === normalise(cleanPc2)) {
+      toast({
+        title: "Same postcode entered twice",
+        description: "Please enter two different postcodes to compare.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate both postcodes exist before hitting the backend
+    setIsValidating(true);
+    try {
+      const [res1, res2] = await Promise.all([
+        fetch(`/api/postcodes/${encodeURIComponent(cleanPc1)}/validate`),
+        fetch(`/api/postcodes/${encodeURIComponent(cleanPc2)}/validate`)
+      ]);
+      if (!res1.ok && !res2.ok) {
+        toast({
+          title: "Postcodes not found",
+          description: "Neither postcode was recognised. Please check for typos and try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+      if (!res1.ok) {
+        toast({
+          title: "Postcode not found",
+          description: `"${cleanPc1}" is not a recognised UK postcode. Please check for typos and try again.`,
+          variant: "destructive"
+        });
+        return;
+      }
+      if (!res2.ok) {
+        toast({
+          title: "Postcode not found",
+          description: `"${cleanPc2}" is not a recognised UK postcode. Please check for typos and try again.`,
+          variant: "destructive"
+        });
+        return;
+      }
+    } catch {
+      toast({
+        title: "Validation failed",
+        description: "Unable to verify the postcodes. Please check your connection and try again.",
+        variant: "destructive"
+      });
+      return;
+    } finally {
+      setIsValidating(false);
     }
 
     setIds({});
@@ -109,7 +170,7 @@ export default function Compare() {
         throw new Error(data1.message || data2.message || "Failed to fetch one or both postcodes");
       }
 
-      setIds({ id1: data1.id, id2: data2.id });
+      setIds({ id1: data1.shareToken, id2: data2.shareToken });
     } catch (error: any) {
       toast({
         title: "Comparison failed",
@@ -260,6 +321,7 @@ export default function Compare() {
                   className="w-full pl-9 pr-4 py-2 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
                   value={pc1}
                   onChange={(e) => setPc1(e.target.value.toUpperCase())}
+                  data-testid="input-postcode1"
                 />
               </div>
             </div>
@@ -270,15 +332,22 @@ export default function Compare() {
                 <input
                   type="text"
                   placeholder="e.g. E1 6AN"
-                  className="w-full pl-9 pr-4 py-2 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                  className={`w-full pl-9 pr-4 py-2 bg-white border rounded-lg outline-none focus:ring-2 focus:ring-primary/20 ${samePostcode ? "border-amber-400 focus:ring-amber-200" : ""}`}
                   value={pc2}
                   onChange={(e) => setPc2(e.target.value.toUpperCase())}
+                  data-testid="input-postcode2"
                 />
               </div>
+              {samePostcode && (
+                <p className="flex items-center gap-1.5 text-xs text-amber-600" data-testid="warning-same-postcode">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Both postcodes are the same — please enter two different areas.
+                </p>
+              )}
             </div>
-            <Button type="submit" className="w-full" disabled={isCreating}>
+            <Button type="submit" className="w-full" disabled={isCreating || isValidating || samePostcode}>
               <TrendingUp className="mr-2 h-4 w-4" />
-              Compare Areas
+              {isValidating ? "Checking postcodes…" : "Compare Areas"}
             </Button>
           </form>
         </Card>
@@ -363,8 +432,8 @@ export default function Compare() {
                         if (m?.fourG) return `4G: ${m.fourG}`;
                         return 'N/A';
                       }},
-                      { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A' },
-                      { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A' },
+                      { name: 'Air Quality', key: 'airQuality', icon: Wind, type: 'text', getValue: (r: any) => r?.environment?.airQuality ? `${r.environment.airQuality.level} (DAQI ${r.environment.airQuality.index}/10)` : 'N/A', getFlags: (r: any) => ({ airQualityEstimated: !!r?.airQualityEstimated }) },
+                      { name: 'Noise Level', key: 'noise', icon: Volume2, type: 'text', getValue: (r: any) => r?.environment?.noise ? `${r.environment.noise.level} (${r.environment.noise.day} dB day)` : 'N/A', getFlags: (r: any) => ({ overpassFailed: !!r?.overpassFailed }) },
                       { name: 'Flood Risk', key: 'flood', icon: Waves, type: 'text', getValue: (r: any) => r?.environment?.floodRisk ? `${r.environment.floodRisk.likelihood}${r.environment.floodRisk.station?.river ? ` — ${r.environment.floodRisk.station.river}` : ''}` : 'N/A' },
                       { name: 'Nearest EV Charger', key: 'evCharger', icon: Zap, type: 'text', getValue: (r: any) => {
                         if (!r?.evChargers?.length) return 'N/A';
@@ -377,6 +446,8 @@ export default function Compare() {
                       const val1 = cat.type === 'score' ? report1Scores[cat.key] : cat.getValue?.(raw1);
                       const val2 = cat.type === 'score' ? report2Scores[cat.key] : cat.getValue?.(raw2);
                       const win = cat.type === 'score' ? getWinner(val1, val2) : 0;
+                      const flags1: Record<string, boolean | undefined> = cat.getFlags?.(raw1) ?? {};
+                      const flags2: Record<string, boolean | undefined> = cat.getFlags?.(raw2) ?? {};
 
                       return (
                         <tr key={cat.name} className="hover:bg-gray-50/50 transition-colors">
@@ -387,10 +458,54 @@ export default function Compare() {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : (win === 2 ? 'text-red-600' : '')}`}>{val1}</span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${win === 1 ? 'text-emerald-600' : (win === 2 ? 'text-red-600' : '')}`}>{val1}</span>
+                              {flags1.airQualityEstimated && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-air-quality-estimated-1`}
+                                  title="Air quality is estimated using a location-based heuristic. No nearby DEFRA monitoring station was available."
+                                >
+                                  <FlaskConical className="w-3 h-3" />
+                                  Estimated
+                                </span>
+                              )}
+                              {flags1.overpassFailed && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-overpass-failed-1`}
+                                  title="Map data unavailable — noise estimate uses reduced road/rail proximity data and may be less accurate."
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Reduced data
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : (win === 1 ? 'text-red-600' : '')}`}>{val2}</span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-lg font-bold ${win === 2 ? 'text-emerald-600' : (win === 1 ? 'text-red-600' : '')}`}>{val2}</span>
+                              {flags2.airQualityEstimated && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-air-quality-estimated-2`}
+                                  title="Air quality is estimated using a location-based heuristic. No nearby DEFRA monitoring station was available."
+                                >
+                                  <FlaskConical className="w-3 h-3" />
+                                  Estimated
+                                </span>
+                              )}
+                              {flags2.overpassFailed && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  data-testid={`badge-overpass-failed-2`}
+                                  title="Map data unavailable — noise estimate uses reduced road/rail proximity data and may be less accurate."
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Reduced data
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

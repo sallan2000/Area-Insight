@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Wind, Volume2, Waves } from "lucide-react";
+import { Wind, Volume2, Waves, AlertTriangle, BadgeCheck, FlaskConical } from "lucide-react";
 
 interface AirQuality {
   index: number;
@@ -34,9 +34,36 @@ interface EnvironmentSectionProps {
     noise: NoiseEstimate;
     floodRisk: FloodRisk;
   };
+  airQualityEstimated?: boolean;
+  overpassFailed?: boolean;
 }
 
-export function EnvironmentSection({ environment }: EnvironmentSectionProps) {
+function DataSourceBadge({ estimated }: { estimated: boolean }) {
+  if (estimated) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+        data-testid="badge-air-quality-estimated"
+        title="Air quality is estimated using a location-based heuristic. No nearby DEFRA monitoring station was available."
+      >
+        <FlaskConical className="w-3 h-3" />
+        Estimated
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+      data-testid="badge-air-quality-live"
+      title="Air quality data sourced from a live DEFRA UK-AIR monitoring station."
+    >
+      <BadgeCheck className="w-3 h-3" />
+      DEFRA UK-AIR
+    </span>
+  );
+}
+
+export function EnvironmentSection({ environment, airQualityEstimated, overpassFailed }: EnvironmentSectionProps) {
   const { airQuality, noise, floodRisk } = environment;
 
   return (
@@ -74,9 +101,22 @@ export function EnvironmentSection({ environment }: EnvironmentSectionProps) {
                 </span>
               </div>
               <p className="text-sm text-muted-foreground leading-snug">{airQuality.description}</p>
-              {airQuality.source && (
-                <p className="text-[10px] text-muted-foreground mt-1">Source: {airQuality.source}</p>
+
+              <div className="flex items-center justify-between pt-1">
+                <DataSourceBadge estimated={airQualityEstimated ?? (!airQuality.source?.includes("DEFRA") && !airQuality.source?.includes("station"))} />
+                {airQuality.source && (
+                  <p className="text-[10px] text-muted-foreground">
+                    {airQuality.source}
+                  </p>
+                )}
+              </div>
+
+              {airQualityEstimated && (
+                <p className="text-[10px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5 border border-amber-100 leading-snug" data-testid="notice-air-quality-estimated">
+                  No nearby monitoring station found. Index estimated from urban classification and proximity to major roads.
+                </p>
               )}
+
               {airQuality.pollutants && airQuality.pollutants.length > 0 && (
                 <div className="pt-3 grid grid-cols-3 gap-1.5">
                   {airQuality.pollutants.slice(0, 6).map((p, i) => (
@@ -133,6 +173,27 @@ export function EnvironmentSection({ environment }: EnvironmentSectionProps) {
                   <p className="text-sm font-bold" data-testid="text-noise-night">{noise.night} dB</p>
                 </div>
               </div>
+
+              <div className="flex items-center pt-1">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                  data-testid="badge-noise-estimated"
+                  title="Noise levels are always estimated from proximity to roads, railways, airports, and nightlife — no sensor data is used."
+                >
+                  <FlaskConical className="w-3 h-3" />
+                  Estimated
+                </span>
+              </div>
+
+              {overpassFailed && (
+                <div className="flex items-start gap-2 p-2 bg-amber-50 rounded-lg border border-amber-200" data-testid="notice-overpass-failed-noise">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-amber-700 leading-snug">
+                    Map data unavailable — noise estimate uses reduced road/rail proximity data and may be less accurate.
+                  </p>
+                </div>
+              )}
+
               {noise.sources && noise.sources.length > 0 && (
                 <div className="pt-2 border-t border-border space-y-1">
                   <p className="text-[10px] text-muted-foreground uppercase font-bold">Contributing sources</p>
@@ -174,6 +235,18 @@ export function EnvironmentSection({ environment }: EnvironmentSectionProps) {
                 {floodRisk.likelihood}
               </p>
               <p className="text-sm text-muted-foreground leading-snug">{floodRisk.description}</p>
+
+              <div className="flex items-center pt-1">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                  data-testid="badge-flood-live"
+                  title="Flood risk data sourced from the Environment Agency Flood Monitoring API."
+                >
+                  <BadgeCheck className="w-3 h-3" />
+                  Env. Agency
+                </span>
+              </div>
+
               {floodRisk.station && (
                 <div className="mt-3 pt-3 border-t border-border space-y-1.5">
                   <div className="flex justify-between items-center text-xs">

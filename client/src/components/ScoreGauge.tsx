@@ -36,7 +36,7 @@ export function ScoreGauge({ score, size = "md", label, showLabel = true }: Scor
 
   return (
     <div className="flex flex-col items-center justify-center">
-      <div className="relative flex items-center justify-center" style={{ width: dim.width, height: dim.width }}>
+      <div className={`relative flex items-center justify-center ${size === 'sm' ? 'w-[60px] h-[60px]' : size === 'lg' ? 'w-[180px] h-[180px]' : 'w-[120px] h-[120px]'}`}>
         {/* Background Ring */}
         <svg className="transform -rotate-90 w-full h-full">
           <circle

@@ -2,10 +2,30 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, insertShareRequestSchema } from "@shared/routes";
-import { assessRateLimit, shareRateLimit } from "./rateLimits";
+import { assessRateLimit, shareRateLimit, REFRESH_COOLDOWN_MS } from "./rateLimits";
+import { isAuthenticated } from "./replit_integrations/auth";
 import { z } from "zod";
 import { readFileSync } from "fs";
 import { join } from "path";
+
+// Sanitise error messages before they reach clients. Upstream provider and
+// internal errors can leak secrets, connection strings, or stack detail if
+// surfaced verbatim. Only expose the message when it looks like a safe,
+// user-facing error; otherwise fall back to a generic string.
+function safeMessage(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  const msg = err.message;
+  if (typeof msg !== "string" || !msg) return fallback;
+  const inner = msg.toLowerCase();
+  const leakMarkers = [
+    "secret", "password", "token", "apikey", "api_key", "key=",
+    "authorization", "authorisation", "postgres", "connection",
+    "etimedout", "econn", "stack", " at ", "\n",
+  ];
+  if (leakMarkers.some((m) => inner.includes(m))) return fallback;
+  if (msg.length > 200) return fallback;
+  return msg;
+}
 
 // One-time flag: log Ofcom mobile API schema once per process to confirm field names/types.
 let ofcomMobileSchemaLogged = false;
@@ -575,50 +595,101 @@ async function fetchAreaMetrics(postcode: string) {
   };
 
   // 2c. Air quality (DEFRA) — returns real data or null; heuristic fallback applied later in processElements
+  // Note: /stations?near= is broken (400). Working approach: /timeseries?bbox=&expanded=true,
+  // then find nearest station from results. Coordinates are stored as [lat, lng] (non-standard).
   const getAirQualityFromDefra = async (): Promise<any | null> => {
     const tAq = Date.now();
     try {
-      const res = await fetch(`https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations?near=${lat},${lng}&limit=1`, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (res.ok) {
-        const stations = await res.json();
-        if (stations && stations.length > 0) {
-          const station = stations[0];
-          const stationDist = station.geometry?.coordinates
-            ? getDistance(lat, lng, station.geometry.coordinates[1], station.geometry.coordinates[0]) : null;
-          const tsRes = await fetch(
-            `https://uk-air.defra.gov.uk/sos-ukair/api/v1/stations/${station.properties?.id || station.id}/timeseries`,
-            { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(8000) }
-          );
-          if (tsRes.ok) {
-            const timeseries = await tsRes.json();
-            const pollutantMap: Record<string, number> = {};
-            for (const ts of timeseries.slice(0, 10)) {
-              if (ts.lastValue?.value != null) {
-                const label = (ts.parameters?.phenomenon?.label || ts.label || "").toLowerCase();
-                if (label.includes("pm2.5") || label.includes("pm25")) pollutantMap["PM2.5"] = ts.lastValue.value;
-                else if (label.includes("pm10")) pollutantMap["PM10"] = ts.lastValue.value;
-                else if (label.includes("no2") || label.includes("nitrogen dioxide")) pollutantMap["NO₂"] = ts.lastValue.value;
-                else if (label.includes("o3") || label.includes("ozone")) pollutantMap["O₃"] = ts.lastValue.value;
-                else if (label.includes("so2") || label.includes("sulphur")) pollutantMap["SO₂"] = ts.lastValue.value;
-              }
-            }
-            const pm25 = pollutantMap["PM2.5"] || 0, pm10 = pollutantMap["PM10"] || 0;
-            const no2 = pollutantMap["NO₂"] || 0, o3 = pollutantMap["O₃"] || 0;
-            if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
-              const daqi = daqiBands(pm25, pm10, no2, o3);
-              console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (real data)`);
-              return {
-                index: daqi, level: daqiLevel(daqi), description: daqiDesc(daqi),
-                pollutants: Object.entries(pollutantMap).map(([name, value]) => ({ name, value: Math.round(value * 10) / 10, unit: "μg/m³" })),
-                station: { name: station.properties?.label || station.label || "Unknown", distance: stationDist },
-                source: "DEFRA UK-AIR"
-              };
-            }
+      // Build a ~25 km bounding box around the postcode
+      const latDelta = 0.25;
+      const lngDelta = 0.35;
+      const minLat = lat - latDelta, maxLat = lat + latDelta;
+      const minLng = lng - lngDelta, maxLng = lng + lngDelta;
+      const bbox = `${minLng},${minLat},${maxLng},${maxLat}`;
+
+      const res = await fetch(
+        `https://uk-air.defra.gov.uk/sos-ukair/api/v1/timeseries?bbox=${bbox}&expanded=true`,
+        { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) {
+        console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (DEFRA HTTP ${res.status})`);
+        return null;
+      }
+
+      const timeseries: any[] = await res.json();
+      if (!timeseries || timeseries.length === 0) {
+        console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (no stations in bbox)`);
+        return null;
+      }
+
+      // Each timeseries entry is a single pollutant at a single location.
+      // The API assigns a unique station.properties.id per pollutant series, so we must
+      // match pollutants individually and find the nearest series for each one.
+      // Station label format: "{Location}-{Pollutant} (air)" — pollutant is after the last '-'.
+      // Coordinates are stored as [lat, lng, alt] (non-standard GeoJSON).
+      type BestEntry = { dist: number; value: number; locationName: string };
+      const best: Record<string, BestEntry> = {};
+
+      for (const ts of timeseries) {
+        if (ts.lastValue?.value == null) continue;
+        const sc = ts.station?.geometry?.coordinates;
+        if (!sc) continue;
+        const sLat = parseFloat(sc[0]);
+        const sLng = parseFloat(sc[1]);
+        if (isNaN(sLat) || isNaN(sLng)) continue;
+        const dist = getDistance(lat, lng, sLat, sLng);
+
+        const fullLabel: string = (ts.station?.properties?.label || "").toLowerCase();
+        // Extract pollutant part (everything after the last '-')
+        const pollutantPart = fullLabel.includes("-") ? fullLabel.split("-").pop()!.trim() : fullLabel;
+        const uom: string = (ts.uom || "").toLowerCase();
+        // CO is reported in mg/m³ — convert to μg/m³
+        const val = ts.lastValue.value * (uom.startsWith("mg") ? 1000 : 1);
+        // Location name is the part before the last '-'
+        const locationName = fullLabel.includes("-")
+          ? fullLabel.split("-").slice(0, -1).join("-").trim() : fullLabel;
+
+        const update = (key: string) => {
+          if (!best[key] || dist < best[key].dist) {
+            best[key] = { dist, value: val, locationName };
           }
+        };
+
+        if (pollutantPart.includes("pm2.5") || pollutantPart.includes("pm 2.5") || pollutantPart.includes("particulate matter < 2.5")) {
+          update("PM2.5");
+        } else if (pollutantPart.includes("pm10") || pollutantPart.includes("pm 10") || pollutantPart.includes("particulate matter < 10")) {
+          update("PM10");
+        } else if (pollutantPart.includes("nitrogen dioxide") || pollutantPart.includes("no2 ") || pollutantPart.startsWith("no2")) {
+          update("NO₂");
+        } else if (pollutantPart.includes("ozone") || pollutantPart.startsWith("o3 ") || pollutantPart === "ozone (air)") {
+          update("O₃");
+        } else if (pollutantPart.includes("sulphur dioxide") || pollutantPart.includes("sulfur dioxide") || pollutantPart.includes("so2")) {
+          update("SO₂");
         }
+      }
+
+      const pollutantMap: Record<string, number> = {};
+      for (const [key, entry] of Object.entries(best)) {
+        pollutantMap[key] = entry.value;
+      }
+
+      const pm25 = pollutantMap["PM2.5"] || 0, pm10 = pollutantMap["PM10"] || 0;
+      const no2 = pollutantMap["NO₂"] || 0, o3 = pollutantMap["O₃"] || 0;
+      if (pm25 > 0 || pm10 > 0 || no2 > 0 || o3 > 0) {
+        const daqi = daqiBands(pm25, pm10, no2, o3);
+        // Report the nearest NO₂ station name as the representative location
+        const repEntry = best["NO₂"] || best["PM2.5"] || best["PM10"] || best["O₃"] || Object.values(best)[0];
+        const stationName = repEntry
+          ? repEntry.locationName.split(" ").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+          : "Nearby station";
+        const stationDist = repEntry?.dist ?? 0;
+        console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (real data, station: ${stationName}, pollutants: ${Object.keys(pollutantMap).join(",")})`);
+        return {
+          index: daqi, level: daqiLevel(daqi), description: daqiDesc(daqi),
+          pollutants: Object.entries(pollutantMap).map(([name, value]) => ({ name, value: Math.round(value * 10) / 10, unit: "μg/m³" })),
+          station: { name: stationName, distance: stationDist },
+          source: "DEFRA UK-AIR"
+        };
       }
     } catch (e) { console.error("DEFRA UK-AIR fetch failed:", e); }
     console.log(`[timing] air quality phase: ${Date.now() - tAq}ms (no real data)`);
@@ -912,10 +983,36 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  const UK_POSTCODE_REGEX = /^[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}$/i;
+
+  app.get("/api/postcodes/:postcode/validate", async (req, res) => {
+    const raw = req.params.postcode?.trim().toUpperCase();
+    if (!raw || !UK_POSTCODE_REGEX.test(raw)) {
+      return res.status(422).json({ valid: false, message: "Invalid UK postcode format." });
+    }
+    try {
+      const upstream = await fetch(
+        `https://api.postcodes.io/postcodes/${encodeURIComponent(raw)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (!upstream.ok) {
+        return res.status(404).json({ valid: false, message: "Postcode not found." });
+      }
+      return res.json({ valid: true });
+    } catch {
+      return res.status(502).json({ valid: false, message: "Unable to verify postcode." });
+    }
+  });
+
   app.post(api.assess.create.path, assessRateLimit, async (req, res) => {
     try {
       const { postcode } = api.assess.create.input.parse(req.body);
       const cleanPostcode = postcode.trim().toUpperCase();
+
+      if (!UK_POSTCODE_REGEX.test(cleanPostcode)) {
+        return res.status(422).json({ message: "Invalid UK postcode format. Please enter a valid postcode (e.g. SW1A 1AA)." });
+      }
+
       const cached = await storage.getAssessmentByPostcode(cleanPostcode);
       
       const userId = (req.user as any)?.claims?.sub || null;
@@ -933,6 +1030,17 @@ export async function registerRoutes(
             userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
           ]);
           return res.status(200).json(cached);
+        }
+
+        if (cached.lastRefreshedAt) {
+          const elapsed = Date.now() - new Date(cached.lastRefreshedAt).getTime();
+          if (elapsed < REFRESH_COOLDOWN_MS) {
+            await Promise.all([
+              storage.updateLastSearchedAt(cached.id),
+              userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
+            ]);
+            return res.status(200).json(cached);
+          }
         }
       }
 
@@ -952,22 +1060,37 @@ export async function registerRoutes(
       }
       res.status(201).json(assessment);
     } catch (e: any) {
-      res.status(400).json({ message: e.message || "Failed to fetch data" });
+      res.status(400).json({ message: safeMessage(e, "Failed to fetch data") });
     }
   });
 
   app.get(api.assess.get.path, async (req, res) => {
-    const assessment = await storage.getAssessment(Number(req.params.id));
+    const assessment = await storage.getAssessmentByToken(req.params.token);
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     res.json(assessment);
   });
 
-  app.post("/api/assess/:id/refresh", assessRateLimit, async (req, res) => {
+  app.post("/api/assess/token/:token/refresh", assessRateLimit, async (req, res) => {
     try {
-      const id = Number(req.params.id);
-      if (isNaN(id)) return res.status(400).json({ message: "Invalid assessment ID" });
-      const existing = await storage.getAssessment(id);
+      const userId = (req.user as any)?.claims?.sub || null;
+      if (!userId) return res.status(401).json({ message: "You must be signed in to refresh a report." });
+
+      const token = req.params.token;
+      const existing = await storage.getAssessmentByToken(token);
       if (!existing) return res.status(404).json({ message: "Assessment not found" });
+
+      const now = Date.now();
+      if (existing.lastRefreshedAt) {
+        const elapsed = now - existing.lastRefreshedAt.getTime();
+        if (elapsed < REFRESH_COOLDOWN_MS) {
+          const retryAfterMs = REFRESH_COOLDOWN_MS - elapsed;
+          const minutesLeft = Math.ceil(retryAfterMs / 60000);
+          return res.status(429).json({
+            message: `This report was refreshed recently. Please wait ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""} before refreshing again.`,
+            retryAfterMs,
+          });
+        }
+      }
 
       const data = await fetchAreaMetrics(existing.postcode);
       const scores = calculateScores(data.metrics, data.metrics.isScotland);
@@ -979,20 +1102,17 @@ export async function registerRoutes(
         rawMetrics: { ...data.metrics, street: data.street, city: data.city },
         scores,
         partialData
-      }, id);
+      }, existing.id, true);
 
-      const userId = (req.user as any)?.claims?.sub || null;
-      if (userId) {
-        await storage.recordUserSearch(userId, id);
-      }
+      await storage.recordUserSearch(userId, existing.id);
 
       res.json(updated);
     } catch (e: any) {
-      res.status(400).json({ message: e.message || "Failed to refresh assessment" });
+      res.status(400).json({ message: safeMessage(e, "Failed to refresh assessment") });
     }
   });
 
-  app.get("/api/my-assessments", async (req, res) => {
+  app.get("/api/my-assessments", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -1014,6 +1134,89 @@ export async function registerRoutes(
       res.status(201).json(shareRequest);
     } catch (err) {
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  function requireAdmin(req: any, res: any, next: any) {
+    const adminSecret = process.env.ADMIN_SECRET;
+    if (!adminSecret) {
+      return res.status(403).json({ message: "Admin access is not configured on this server." });
+    }
+    const auth = req.headers["authorization"] || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (token !== adminSecret) {
+      return res.status(401).json({ message: "Invalid or missing admin secret." });
+    }
+    next();
+  }
+
+  app.get("/api/admin/partial-assessments", requireAdmin, async (_req, res) => {
+    try {
+      const partials = await storage.getPartialAssessments();
+      res.json({
+        count: partials.length,
+        assessments: partials.map(a => ({
+          id: a.id,
+          postcode: a.postcode,
+          partialData: a.partialData,
+          lastSearchedAt: a.lastSearchedAt,
+          createdAt: a.createdAt,
+          shareToken: a.shareToken,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to list partial assessments." });
+    }
+  });
+
+  app.post("/api/admin/refresh-partial", requireAdmin, async (req, res) => {
+    try {
+      const rawLimit = req.query.limit;
+      const limit = rawLimit !== undefined ? Math.max(1, parseInt(String(rawLimit), 10) || 1) : undefined;
+
+      const allPartials = await storage.getPartialAssessments();
+      if (allPartials.length === 0) {
+        return res.json({ message: "No partial assessments found.", refreshed: 0, failed: 0, remaining: 0, results: [] });
+      }
+
+      const batch = limit !== undefined ? allPartials.slice(0, limit) : allPartials;
+      const remaining = allPartials.length - batch.length;
+
+      const results: Array<{ id: number; postcode: string; status: string; error?: string }> = [];
+
+      for (const assessment of batch) {
+        try {
+          const data = await fetchAreaMetrics(assessment.postcode);
+          const scores = calculateScores(data.metrics, data.metrics.isScotland);
+          const partialData = data.overpassFailed || false;
+          await storage.createAssessment(
+            {
+              postcode: assessment.postcode,
+              lat: data.lat,
+              lng: data.lng,
+              rawMetrics: { ...data.metrics, street: data.street, city: data.city },
+              scores,
+              partialData,
+            },
+            assessment.id
+          );
+          results.push({ id: assessment.id, postcode: assessment.postcode, status: partialData ? "still-partial" : "refreshed" });
+        } catch (err: any) {
+          results.push({ id: assessment.id, postcode: assessment.postcode, status: "failed", error: safeMessage(err, "Unknown error") });
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      const refreshed = results.filter(r => r.status === "refreshed").length;
+      const stillPartial = results.filter(r => r.status === "still-partial").length;
+      const failed = results.filter(r => r.status === "failed").length;
+      const message = remaining > 0
+        ? `Batch complete. ${remaining} partial assessment(s) still queued — call again to continue.`
+        : "Bulk refresh complete.";
+
+      res.json({ message, refreshed, stillPartial, failed, remaining, results });
+    } catch (err) {
+      res.status(500).json({ message: "Bulk refresh failed." });
     }
   });
 

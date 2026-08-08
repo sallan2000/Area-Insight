@@ -1,5 +1,7 @@
 import rateLimit from "express-rate-limit";
 
+export const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
+
 export const assessRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: (req) => ((req as any).user ? 30 : 10),

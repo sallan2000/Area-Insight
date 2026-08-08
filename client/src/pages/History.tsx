@@ -123,7 +123,7 @@ export default function HistoryPage() {
                 <Card
                   key={a.id}
                   className="p-6 hover:shadow-md transition-shadow cursor-pointer group"
-                  onClick={() => setLocation(`/report/${a.id}`)}
+                  onClick={() => setLocation(`/report/${a.shareToken}`)}
                   data-testid={`card-assessment-${a.id}`}
                 >
                   <div className="flex items-start justify-between mb-4">

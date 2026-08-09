@@ -14,6 +14,7 @@
     "sync:property-sales": "tsx scripts/sync-property-sales.ts",
     "sync:property-prices-ukhpi": "tsx scripts/sync-property-prices-ukhpi.ts",
     "sync:census-demographics": "tsx scripts/sync-census-demographics.ts",
+    "sync:census-merge": "python3 scripts/build-census-input.py",
     "validate:score": "tsx scripts/validate-score.ts"
   },
   "dependencies": {

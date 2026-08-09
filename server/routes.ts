@@ -1324,16 +1324,16 @@ function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
   const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.score ?? 0);
-  // Green & Health: combined liveability pillar from OSM (parks/green space + GP/
-  // hospital/dentist access). Both are 0-100 sub-scores; average them.
+  // Green & Health: combined 0-100 sub-score from OSM (parks/green space + GP/
+  // hospital/dentist access). Shown as a supplementary section (like Air Quality /
+  // Broadband), NOT as a core pillar, so it does not enter the headline composite.
   const greenHealthScore = Math.round(((metrics.green?.score || 0) + (metrics.health?.score || 0)) / 2);
-  // Rebalanced weights to include the new pillar (sums to 1.0):
-  // transport .22, safety .30, amenities .17, schools .17, green&health .14
-  const totalScore = (transportScoreFinal * 0.22)
-    + (Math.sqrt(safetyScoreFinal) * 10 * 0.30)
-    + (amenitiesScoreFinal * 0.17)
-    + (schoolsScoreFinal * 0.17)
-    + (greenHealthScore * 0.14);
+  // Headline composite = the four core pillars only (restored original weighting):
+  // transport .25, safety .35, amenities .20, schools .20.
+  const totalScore = (transportScoreFinal * 0.25)
+    + (Math.sqrt(safetyScoreFinal) * 10 * 0.35)
+    + (amenitiesScoreFinal * 0.20)
+    + (schoolsScoreFinal * 0.20);
 
   return {
     transport: Math.round(transportScoreFinal),
@@ -1514,13 +1514,13 @@ export async function registerRoutes(
       const scores = assessment.scores as any;
       const raw = assessment.rawMetrics as any;
       const safetyExcluded = !!(raw?.crimeDataUnavailable);
-      // Use the precomputed total (includes the Green & Health pillar) so the email
-      // matches the on-screen report. Fall back to a safety-excluded recompute only
-      // when safety was genuinely unavailable.
+      // Use the precomputed total (the four core pillars). Fall back to a recompute
+      // only when scores.total is missing; that fallback also uses the 4-pillar
+      // weighting (green & health is a supplementary section, not in the headline).
       const overallScore = safetyExcluded && scores.total == null
         ? Math.round((scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65)))
         : Math.round(scores.total ?? (
-            (0.22 * scores.transport) + (0.30 * Math.sqrt(scores.safety) * 10) + (0.17 * scores.amenities) + (0.17 * scores.schools) + (0.14 * (scores.greenHealth ?? 0))
+            (0.25 * scores.transport) + (0.35 * Math.sqrt(scores.safety) * 10) + (0.20 * scores.amenities) + (0.20 * scores.schools)
           ));
       const reportUrl = `${req.protocol}://${req.get('host')}/report/${assessment.id}`;
       const dataDate = assessment.createdAt
@@ -1535,7 +1535,6 @@ export async function registerRoutes(
         { label: "🛡️ Safety", score: safetyExcluded ? null : Math.round(scores.safety), source: raw?.safetySource },
         { label: "🎓 Schools", score: Math.round(scores.schools) },
         { label: "🛒 Amenities", score: Math.round(scores.amenities) },
-        { label: "🌳 Green & Health", score: Math.round(scores.greenHealth ?? 0) },
       ].map(({ label, score, source }) => score === null
         ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (data unavailable)</td></tr>`
         : `<tr><td style="padding:8px 12px;color:#374151;">${label}${source === 'simd2020' ? ' <span style="font-size:10px;color:#9ca3af;">(SIMD 2020)</span>' : source === 'estimated-ni' ? ' <span style="font-size:10px;color:#9ca3af;">(estimated NI)</span>' : source === 'policeuk-lowconfidence' ? ' <span style="font-size:10px;color:#9ca3af;">(low confidence)</span>' : ''}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`

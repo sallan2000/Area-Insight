@@ -6,7 +6,6 @@ import {
   Bus,
   GraduationCap,
   Store,
-  Trees,
   ArrowLeft,
   Share2, 
   MapPin,
@@ -46,6 +45,7 @@ import { UserMenu } from "@/components/UserMenu";
 import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
+import { GreenHealthSection } from "@/components/report/GreenHealthSection";
 import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
@@ -66,7 +66,7 @@ export default function Report() {
   const { data: report, isLoading, error } = useAssessment(token);
   const { isAuthenticated } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | 'green' | null>(null);
+  const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
 
   // Set initial active tab based on scores and crime count
   useEffect(() => {
@@ -686,16 +686,6 @@ export default function Report() {
                   onClick={() => setActiveTab('amenities')}
                   overpassFailed={raw.overpassFailed}
                 />
-                <MetricCard
-                  title="Green & Health"
-                  score={scores.greenHealth}
-                  icon={<Trees className="w-6 h-6" />}
-                  description={raw.overpassFailed ? "Map data temporarily unavailable" : `${raw.green?.count || 0} green spaces & ${raw.health?.count || 0} GPs/clinics nearby`}
-                  status={getOverallGrade(scores.greenHealth)}
-                  isActive={activeTab === 'green'}
-                  onClick={() => setActiveTab('green')}
-                  overpassFailed={raw.overpassFailed}
-                />
               </div>
             </div>
 
@@ -891,31 +881,6 @@ export default function Report() {
                             })}
                           </div>
                         )}
-                        {activeTab === 'green' && (
-                          <div className="space-y-6">
-                            {raw.overpassFailed && (
-                              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2">
-                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                                <p className="text-xs text-amber-700">Map data temporarily unavailable — scores may be lower than usual. Try refreshing the report later.</p>
-                              </div>
-                            )}
-                            <div className="p-4 bg-green-50 rounded-xl border border-green-200">
-                              <h5 className="text-sm font-bold text-green-800 mb-1">Green space</h5>
-                              <p className="text-xs text-green-700">
-                                {raw.green?.count || 0} green spaces (parks, gardens, nature reserves, woodland) within 1.5 km
-                                {raw.green?.nearestDistance != null ? ` — nearest ${raw.green.nearestDistance.toFixed(2)} km away` : ''}.
-                              </p>
-                            </div>
-                            <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                              <h5 className="text-sm font-bold text-blue-800 mb-1">Health access</h5>
-                              <p className="text-xs text-blue-700">
-                                {raw.health?.count || 0} GPs, clinics, hospitals or dentists nearby
-                                {raw.health?.nearestDistance != null ? ` — nearest ${raw.health.nearestDistance.toFixed(2)} km away` : ''}.
-                                {' '}From OpenStreetMap; not a substitute for NHS service availability.
-                              </p>
-                            </div>
-                          </div>
-                        )}
                       </ul>
                     </div>
                   </div>
@@ -939,6 +904,10 @@ export default function Report() {
 
           {raw.evChargers && (
             <EvChargersSection evChargers={raw.evChargers} />
+          )}
+
+          {raw.green && raw.health && (
+            <GreenHealthSection green={raw.green} health={raw.health} overpassFailed={raw.overpassFailed} />
           )}
 
           {/* Nearest Neighbourhoods */}

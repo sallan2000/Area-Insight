@@ -1,8 +1,8 @@
 # ScoreMyStreet
 
 > UK postcode liveability scoring service. Enter a UK postcode, get a 0–100
-> liveability score across Transport, Safety, Schools, Amenities, and Green & Health,
-> derived from live UK open data.
+> liveability score across Transport, Safety, Schools, and Amenities, derived
+> from live UK open data.
 
 *Repo directory name: `Area-Insight` (an earlier name). Product/brand name used
 throughout the app and emails: **ScoreMyStreet**.*
@@ -190,15 +190,18 @@ total = transport * 0.25
   England-only and avoids cross-postcode collisions (e.g. two "St Mary's" schools).
 - **Amenities** blends count, category diversity, top-rated count, and supermarket
   proximity.
-- **Green & Health** (new) — two OSM-derived liveability signals for all UK nations:
+- **Green Space & Health Access** — shown as a supplementary section (alongside
+  Air Quality, Flood, Broadband and Mobile), *not* one of the four scored pillars.
+  Two OSM-derived liveability signals for all UK nations:
   - *Green space*: count + proximity of parks, gardens, playgrounds, pitches, commons,
     nature reserves and natural woodland/grass within 1.5 km.
   - *Health access*: proximity + count of GPs, clinics, hospitals and dentists
     (OpenStreetMap only — indicative of provision, not NHS service availability).
-  The two sub-scores are averaged into one Green & Health pillar.
+  Each shows its own sub-score; they inform the reader but are excluded from the
+  headline composite (kept consistent with the other supplementary sections).
 
-**Composite weights (rebalanced to include Green & Health):** Transport 22%,
-Safety 30%, Amenities 17%, Schools 17%, Green & Health 14%.
+**Composite weights (four core pillars):** Transport 25%, Safety 35%,
+Amenities 20%, Schools 20%.
 
 Raw metrics are stored as JSON (`rawMetrics`) so the scoring function can be
 re-run or tweaked without re-fetching external data.

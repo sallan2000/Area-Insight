@@ -69,10 +69,17 @@ lets you save a search history and *refresh* a report to pull fresh data.
   Scotland, Wales and Northern Ireland alike. England additionally gets a capped
   Ofsted quality nudge from synced ratings; the other nations use the options
   basis only (their rating feeds aren't published as comparable grades).
-- **Scottish safety is scored from an annual proxy.** Police Scotland doesn't
-  publish via the police.uk API, so Safety for Scottish postcodes uses the Scottish
-  Government **SIMD 2020v2 Crime domain** resolved to the postcode's Data Zone —
-  clearly labelled as annual, small-area statistics, not realtime crime.
+- **Scottish safety is scored from an annual proxy, recalibrated to the UK scale.**
+  Police Scotland doesn't publish via the police.uk API, so Safety for Scottish
+  postcodes uses the Scottish Government **SIMD 2020v2 Crime domain** resolved to the
+  postcode's Data Zone — clearly labelled as annual, small-area statistics, not
+  realtime crime. The raw SIMD crime rank is a *national deprivation percentile*,
+  which (unlike the England absolute realtime score) puts the median zone at 50 and
+  makes ordinary areas read as high-crime. To balance it with the rest of the UK, the
+  rank is re-centred with a logistic remap anchored at the median Data Zone (median →
+  78, matching the England realtime median; tails compressed to ~[60, 95]) so
+  Scottish scores sit on the same practical 0–100 scale. The relative ordering is
+  preserved (worst zones still score lowest) — only the centring changes.
 - **Every report carries a Data Confidence band.** Each component is flagged
   `measured` (real data) or `estimated` (heuristic fallback, e.g. air quality with
   no nearby DEFRA station, or Overpass outage), and an overall high/medium/low band

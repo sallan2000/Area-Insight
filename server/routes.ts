@@ -364,9 +364,25 @@ function processElements(input: ProcessElementsInput) {
         scottishSafetyRank = entry.crimeRank;
         scottishSafetyRate = entry.crimeRate;
         // Crime domain rank: 1 = most crime-affected (worst safety), ~6976 = least.
-        // Higher rank => safer, so Safety = rank scaled to 0–100 (rank 1 -> 0, rank N -> 100).
-        const maxRank = 6976;
-        scottishSafetyScore = Math.round((entry.crimeRank - 1) / (maxRank - 1) * 100);
+        // Higher rank => safer. BUT a raw rank->0..100 linear scale is NOT comparable
+        // to the England/Wales realtime safety score: the latter is an absolute
+        // (sparse-crime-circle) measure that floats high (typical areas ~75–95),
+        // whereas a national deprivation *percentile* puts the median Scottish zone at
+        // 50 and ordinary areas at 10–50 — making Scotland read artificially dangerous.
+        // So we re-centre the SIMD rank onto the England scale with a logistic remap
+        // anchored at the median Data Zone rank (3488): median -> 78 (England median),
+        // tails compressed to ~[60, 95]. This keeps SIMD's real relative ordering
+        // (worst zones still lowest) while putting Scotland on the same practical
+        // scale as the rest of the UK. Calibrated against the 6,976-entry SIMD
+        // 2020v2 crime-rank distribution.
+        const medianRank = 3488;
+        const SIMD_SAFETY_MEDIAN = 78;
+        const SIMD_SAFETY_AMP = 23;
+        scottishSafetyScore = Math.round(
+          Math.max(0, Math.min(100,
+            SIMD_SAFETY_MEDIAN + SIMD_SAFETY_AMP * Math.tanh((entry.crimeRank - medianRank) / medianRank)
+          ))
+        );
       }
     }
   }

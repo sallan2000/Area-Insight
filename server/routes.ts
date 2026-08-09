@@ -349,16 +349,25 @@ function processElements(input: ProcessElementsInput) {
   let scottishSafetyScore: number | null = null;
   let scottishSafetyRank: number | null = null;
   let scottishSafetyRate: number | null = null;
+  // Transparency flag: postcodes.io returns NO Data Zone (codes.lsoa11) for some
+  // Scottish postcodes (e.g. G1 1AA, PA1 1AB) — they 404 / return an empty codes
+  // block. There is no SIMD key to look up in that case, so Safety is genuinely
+  // unavailable. Record WHY so the UI can say so honestly instead of looking broken.
+  let safetyDataZoneMissing = false;
   if (isScotlandPostcode) {
     const dz = geoData.result.codes?.lsoa11 || null;
-    const entry = dz ? scotlandDzCrime[dz] : null;
-    if (entry && entry.crimeRank) {
-      scottishSafetyRank = entry.crimeRank;
-      scottishSafetyRate = entry.crimeRate;
-      // Crime domain rank: 1 = most crime-affected (worst safety), ~6976 = least.
-      // Higher rank => safer, so Safety = rank scaled to 0–100 (rank 1 -> 0, rank N -> 100).
-      const maxRank = 6976;
-      scottishSafetyScore = Math.round((entry.crimeRank - 1) / (maxRank - 1) * 100);
+    if (!dz) {
+      safetyDataZoneMissing = true;
+    } else {
+      const entry = scotlandDzCrime[dz];
+      if (entry && entry.crimeRank) {
+        scottishSafetyRank = entry.crimeRank;
+        scottishSafetyRate = entry.crimeRate;
+        // Crime domain rank: 1 = most crime-affected (worst safety), ~6976 = least.
+        // Higher rank => safer, so Safety = rank scaled to 0–100 (rank 1 -> 0, rank N -> 100).
+        const maxRank = 6976;
+        scottishSafetyScore = Math.round((entry.crimeRank - 1) / (maxRank - 1) * 100);
+      }
     }
   }
 
@@ -513,7 +522,11 @@ function processElements(input: ProcessElementsInput) {
       crimeRate: scottishSafetyRate,
       dataZone: geoData.result.codes?.lsoa11 || null,
       year: '2020/21',
-    } : null,
+    } : (isScotlandPostcode && safetyDataZoneMissing ? {
+      score: null,
+      dataZone: null,
+      reason: 'no-datazone', // postcodes.io returned no Data Zone for this postcode
+    } : null),
     safetyBreakdown: {
       violent: violentCrimes,
       theft: burglaryCrimes,
@@ -1244,34 +1257,37 @@ export async function registerRoutes(
       const userId = (req.user as any)?.claims?.sub || null;
       
       if (cached) {
-        const ninetyDaysInMs = 90 * 24 * 60 * 60 * 1000;
-        const oneDayInMs = 24 * 60 * 60 * 1000;
-        let isFresh: boolean;
-        if (cached.partialData) {
-          const lastSearchedAt = cached.lastSearchedAt ? new Date(cached.lastSearchedAt).getTime() : 0;
-          isFresh = (Date.now() - lastSearchedAt) < oneDayInMs;
-        } else {
+        // A "partial" row means the original computation was incomplete (e.g. the
+        // Overpass layer blipped and transport/schools/amenities were computed from
+        // empty data). Serving that stale empty result back on every retest is the
+        // bug — it makes a postcode look like it has NO data when it actually does.
+        // Treat a partial row as NEVER fresh: always recompute so the next response
+        // reflects whatever the external services return right now.
+        if (!cached.partialData) {
+          const ninetyDaysInMs = 90 * 24 * 60 * 60 * 1000;
           const createdAt = cached.createdAt ? new Date(cached.createdAt).getTime() : 0;
-          isFresh = (Date.now() - createdAt) < ninetyDaysInMs;
-        }
+          const isFresh = (Date.now() - createdAt) < ninetyDaysInMs;
 
-        if (isFresh) {
-          await Promise.all([
-            storage.updateLastSearchedAt(cached.id),
-            userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
-          ]);
-          return res.status(200).json(cached);
-        }
-
-        if (cached.lastRefreshedAt) {
-          const elapsed = Date.now() - new Date(cached.lastRefreshedAt).getTime();
-          if (elapsed < REFRESH_COOLDOWN_MS) {
+          if (isFresh) {
             await Promise.all([
               storage.updateLastSearchedAt(cached.id),
               userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
             ]);
             return res.status(200).json(cached);
           }
+
+          if (cached.lastRefreshedAt) {
+            const elapsed = Date.now() - new Date(cached.lastRefreshedAt).getTime();
+            if (elapsed < REFRESH_COOLDOWN_MS) {
+              await Promise.all([
+                storage.updateLastSearchedAt(cached.id),
+                userId ? storage.recordUserSearch(userId, cached.id) : Promise.resolve(),
+              ]);
+              return res.status(200).json(cached);
+            }
+          }
+        } else {
+          console.log(`[cache] ${cleanPostcode} has partial data — recomputing instead of serving stale empty result`);
         }
       }
 

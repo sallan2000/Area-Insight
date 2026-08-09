@@ -9,7 +9,6 @@ import { UserMenu } from "@/components/UserMenu";
 
 export default function Home() {
   const [postcode, setPostcode] = useState("");
-  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -64,21 +63,14 @@ export default function Home() {
       setIsValidating(false);
     }
 
-    // Postcode is valid — show the modal and start the assessment
-    setCompletedSteps([]);
+    // Postcode is valid — show the modal and start the assessment.
+    // The modal manages its own honest progress animation (no fake completion ticks);
+    // it closes automatically when the report route loads.
     setShowModal(true);
-
-    const steps = ["transport", "safety", "schools", "amenities"];
-    steps.forEach((step, index) => {
-      setTimeout(() => {
-        setCompletedSteps(prev => [...prev, step]);
-      }, (index + 1) * 800);
-    });
 
     mutate({ postcode: cleanPostcode }, {
       onError: (error: any) => {
         setShowModal(false);
-        setCompletedSteps([]);
         toast({
           title: "Assessment failed",
           description: error.message || "Something went wrong. Please try again.",
@@ -110,7 +102,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
-      <LoadingModal isOpen={showModal} completedSteps={completedSteps} />
+      <LoadingModal isOpen={showModal} />
 
       {/* Navigation */}
       <nav className="w-full max-w-7xl mx-auto px-6 py-5 flex justify-between items-center relative z-50">

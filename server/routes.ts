@@ -1318,7 +1318,7 @@ async function fetchAreaMetrics(postcode: string) {
   // 3. Run all tasks in parallel — nothing below depends on another until all complete
   const tParallel = Date.now();
   const [
-    elements,
+    overpassResult,
     crimeResult,
     nearestPostcodes,
     prefetchedAirQuality,
@@ -1358,15 +1358,15 @@ async function fetchAreaMetrics(postcode: string) {
   // A *green-only* failure (common for Scotland/NI where Overpass is busier) must
   // also be treated as partial so the row is never cached as "fresh" with silently
   // zeroed green space + health. See processElements usage of greenFailed below.
-  const overpassFailed = elements.length === 0;
-  const greenHealthFailed = greenFailed;
+  const overpassFailed = overpassResult.elements.length === 0;
+  const greenHealthFailed = overpassResult.greenFailed;
   const airQualityEstimated = prefetchedAirQuality === null;
 
   // 4. Post-parallel processing
 
   // Extract street name from Overpass elements
   let streetName = street;
-  const streetEls = (elements as any[]).filter((e: any) => e.tags?.highway && e.tags?.name);
+  const streetEls = (overpassResult.elements as any[]).filter((e: any) => e.tags?.highway && e.tags?.name);
   if (streetEls.length > 0) {
     const closest = streetEls.map((e: any) => {
       const elLat = e.lat || e.center?.lat; const elLon = e.lon || e.center?.lon;
@@ -1435,7 +1435,7 @@ async function fetchAreaMetrics(postcode: string) {
   console.log(`fetchAreaMetrics: ${geoData.result.postcode} completed in ${Date.now() - t0}ms`);
 
   return processElements({
-    elements, overpassFailed, airQualityEstimated, lat, lng, geoData,
+    elements: overpassResult.elements, overpassFailed, airQualityEstimated, lat, lng, geoData,
     crimesData, crimeCount, crimeTrend, severityScore,
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,

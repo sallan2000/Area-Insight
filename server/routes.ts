@@ -770,14 +770,13 @@ async function fetchAreaMetrics(postcode: string) {
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter"
   ];
-  // [timeout:90]: server-side execution budget — lets the Overpass server finish the query.
-  // AbortSignal.timeout(35000): client-side hard ceiling per mirror — if the server hasn't
-  // responded in 35 s we abandon it and let the other racing mirrors win.
-  // Previous [timeout:25] caused the server to cut the query short and return empty elements
-  // (no remark) which Promise.any() incorrectly accepted as a valid empty result, scoring
-  // transport/schools/amenities as 0 for all dense urban postcodes.
-  const overpassQuery = `
-    [out:json][timeout:90];
+  // Two queries instead of one: the original core (transport/schools/amenities)
+  // and a lighter green+health query. Splitting keeps each inside the per-mirror
+  // time budget so dense English postcodes (where the combined query previously
+  // timed out on all mirrors, zeroing every OSM pillar while police.uk safety
+  // survived) now reliably return data. Elements are merged downstream.
+  const overpassQueryCore = `
+    [out:json][timeout:60];
     (
       node["amenity"~"cafe|restaurant|pub|bar|library|pharmacy|marketplace|post_office"](around:2500,${lat},${lng});
       node["amenity"="nightclub"](around:500,${lat},${lng});
@@ -793,6 +792,12 @@ async function fetchAreaMetrics(postcode: string) {
       way["railway"~"rail|light_rail|subway|tram"](around:500,${lat},${lng});
       node["aeroway"~"aerodrome|helipad"](around:5000,${lat},${lng});
       way["aeroway"~"aerodrome|runway"](around:5000,${lat},${lng});
+    );
+    out body center;
+  `;
+  const overpassQueryGreen = `
+    [out:json][timeout:60];
+    (
       node["amenity"~"doctors|hospital|clinic|dentist"](around:3000,${lat},${lng});
       way["amenity"~"doctors|hospital|clinic|dentist"](around:3000,${lat},${lng});
       node["leisure"~"park|garden|playground|pitch|common|nature_reserve|recreation_ground|dog_park"](around:1500,${lat},${lng});
@@ -803,22 +808,21 @@ async function fetchAreaMetrics(postcode: string) {
     out body center;
   `;
 
-  // Race all 3 mirrors simultaneously — first to return non-empty valid data wins.
-  // Mirrors that return the Overpass server-timeout remark ("runtime error … exceeded")
-  // or return empty elements are rejected so the race continues to other mirrors.
-  const fetchFromOverpass = async (): Promise<any[]> => {
-    const tOverpass = Date.now();
+  // Race both queries (core + green) across all mirrors. Each query runs its own
+  // mirror race; if one fully fails we still keep the other's elements so a single
+  // slow query can't blank every OSM pillar. Only treat Overpass as failed when
+  // BOTH return empty (genuinely feature-free area or all mirrors down).
+  const runQuery = async (query: string): Promise<any[]> => {
     const tryMirror = async (endpoint: string): Promise<any[]> => {
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
-        body: `data=${encodeURIComponent(overpassQuery)}`,
+        body: `data=${encodeURIComponent(query)}`,
         signal: AbortSignal.timeout(35000)
       });
       if (!res.ok) throw new Error(`Overpass (${endpoint}): HTTP ${res.status}`);
       const data = await res.json();
-      // Overpass remark when query is cut short: "runtime error: Query run time limit exceeded.
-      // Aborting after N seconds." — note the word is "exceeded", not "timeout".
+      // Overpass remark when query is cut short: "runtime error: Query run time limit exceeded."
       if (data.remark && (
         data.remark.includes("exceeded") ||
         data.remark.includes("runtime error") ||
@@ -827,31 +831,28 @@ async function fetchAreaMetrics(postcode: string) {
       )) {
         throw new Error(`Overpass query cut short on ${endpoint}: ${data.remark.slice(0, 120)}`);
       }
-      const elements: any[] = data.elements || [];
-      // An empty response from an Overpass mirror almost always means the query was
-      // cut off before it could find nearby features — reject it so the race tries
-      // other mirrors. Genuinely feature-free areas will cause all mirrors to throw
-      // here, and the outer catch safely returns [].
-      if (elements.length === 0) {
+      const els: any[] = data.elements || [];
+      // Empty result from a mirror almost always means the query was cut off before
+      // finding nearby features — reject so the race tries other mirrors. A genuinely
+      // feature-free area will make all mirrors throw, and we return [] for that query.
+      if (els.length === 0) {
         throw new Error(`Overpass (${endpoint}): returned 0 elements — query likely timed out on server`);
       }
-      return elements;
+      return els;
     };
+    return Promise.any(
+      overpassEndpoints.map(ep =>
+        tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
+      )
+    ).catch(() => []);
+  };
 
-    try {
-      const result = await Promise.any(
-        overpassEndpoints.map(ep =>
-          tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
-        )
-      );
-      console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (${result.length} elements)`);
-      return result;
-    } catch {
-      // All mirrors failed — return empty so the rest of the assessment still proceeds
-      // (safety/environment/connectivity scores will still be calculated correctly)
-      console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (all mirrors failed)`);
-      return [];
-    }
+  const fetchFromOverpass = async (): Promise<any[]> => {
+    const tOverpass = Date.now();
+    const [core, green] = await Promise.all([runQuery(overpassQueryCore), runQuery(overpassQueryGreen)]);
+    const merged = [...core, ...green];
+    console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (core ${core.length} + green ${green.length} = ${merged.length} elements)`);
+    return merged;
   };
 
   // 2b. Crime — monthly fetches and neighbourhood lookup run concurrently.

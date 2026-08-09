@@ -199,6 +199,12 @@ re-run or tweaked without re-fetching external data.
   sticking a postcode with empty pillars. (Previously partial rows were re-served
   within a 1-day window; that was the bug that made some Scottish postcodes look
   like they had no data even though the DB showed a partial row.)
+- **The whole cache is cleared on every production boot (deploy/restart).**
+  `server/index.ts` wipes all cached assessments once at startup (production only,
+  fire-and-forget so a failure can't block boot). This guarantees stale/partial rows
+  from a previous code version can never persist across a deploy — every postcode
+  recomputes from live data on first request after a redeploy. You can also purge
+  manually via `POST /api/admin/clear-cache` (requires `ADMIN_SECRET`).
 - Signed-in users can **refresh** (`POST /api/assess/token/:token/refresh`),
   subject to a **1-hour cooldown** (`REFRESH_COOLDOWN_MS`), and only when signed in.
 
@@ -214,8 +220,9 @@ All JSON. Validation via Zod (`shared/routes.ts`).
 | POST | `/api/assess/token/:token/refresh` | signed-in + 1h cooldown | Re-fetch fresh data |
 | GET | `/api/my-assessments` | signed-in | User's search history |
 | POST | `/api/share` | rate-limited | Email the report (Resend) |
-| GET | `/api/admin/partial-assessments` | `ADMIN_SECRET` | List partial assessments |
-| POST | `/api/admin/refresh-partial` | `ADMIN_SECRET` | Bulk-refresh partials |
+| `GET` | `/api/admin/partial-assessments` | `ADMIN_SECRET` | List partial assessments |
+| `POST` | `/api/admin/refresh-partial` | `ADMIN_SECRET` | Bulk-refresh partials |
+| `POST` | `/api/admin/clear-cache` | `ADMIN_SECRET` | Wipe ALL cached assessments (forces every postcode to recompute) |
 
 `POST /api/assess` body: `{ "postcode": "SW1A 1AA" }`. Returns the stored
 `assessment` row (id, postcode, lat/lng, `rawMetrics` JSON, `scores` JSON,

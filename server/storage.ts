@@ -21,6 +21,7 @@ export interface IStorage {
   getAssessmentsByUser(userId: string): Promise<Assessment[]>;
   updateLastSearchedAt(id: number): Promise<void>;
   createShareRequest(request: InsertShareRequest): Promise<ShareRequest>;
+  clearAllAssessments(): Promise<{ deletedAssessments: number; deletedUserSearches: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -105,6 +106,18 @@ export class DatabaseStorage implements IStorage {
       .values(insertRequest)
       .returning();
     return request;
+  }
+
+  // Wipe all cached assessments (and the user-search links that point at them) so
+  // every future postcode lookup recomputes from live data. Used by the admin
+  // "clear cache" endpoint. Order matters: clear the FK-dependent table first.
+  async clearAllAssessments(): Promise<{ deletedAssessments: number; deletedUserSearches: number }> {
+    const removedSearches = await db.delete(userSearches).returning();
+    const removedAssessments = await db.delete(assessments).returning();
+    return {
+      deletedAssessments: removedAssessments.length,
+      deletedUserSearches: removedSearches.length,
+    };
   }
 }
 

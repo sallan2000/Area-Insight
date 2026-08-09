@@ -113,6 +113,18 @@ app.use((req, res, next) => {
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 
+  // On production boot (i.e. every Replit deploy/restart), wipe the cached
+  // assessments once so stale/partial rows from a previous code version can never
+  // persist and be served back. This is the automatic equivalent of
+  // POST /api/admin/clear-cache. Fire-and-forget: a failure must never block boot.
+  if (process.env.NODE_ENV === "production") {
+    import("./storage").then(({ storage }) =>
+      storage.clearAllAssessments()
+        .then((r) => console.log(`[boot] cleared assessment cache: ${r.deletedAssessments} rows (${r.deletedUserSearches} user-search links)`))
+        .catch((e) => console.warn("[boot] cache clear skipped:", e instanceof Error ? e.message : e))
+    );
+  }
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

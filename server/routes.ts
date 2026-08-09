@@ -1565,5 +1565,18 @@ export async function registerRoutes(
     }
   });
 
+  // Wipe ALL cached assessments so every postcode recomputes from live data.
+  // Intended to be called on deploy (via scripts/post-merge.sh) so stale/partial
+  // rows from a previous code version can never persist. Guarded by ADMIN_SECRET.
+  app.post("/api/admin/clear-cache", requireAdmin, async (_req, res) => {
+    try {
+      const result = await storage.clearAllAssessments();
+      console.log(`[clear-cache] wiped ${result.deletedAssessments} assessments (${result.deletedUserSearches} user-search links)`);
+      res.json({ message: "Assessment cache cleared.", ...result });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to clear cache." });
+    }
+  });
+
   return httpServer;
 }

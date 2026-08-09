@@ -144,7 +144,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     source: "UK House Price Index (HM Land Registry / ONS), Open Government Licence v3.0",
     fileMonth: usedYm,
-    note: "UKHPI average price per geography. For Scotland & Northern Ireland this is the council-area average (finest free granularity); transaction-level per-postcode sales are paid-only there.",
+    note: "UKHPI average price per geography. For Scotland & Northern Ireland this is the council-area average — the average at council/area level, shown when postcode-specific sales information is not available.",
     byCode,
   };
 

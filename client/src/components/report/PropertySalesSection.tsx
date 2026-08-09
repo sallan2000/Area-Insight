@@ -58,8 +58,8 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
       {data.available === false && data.country && (
         <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
           <p className="text-sm text-amber-800">
-            Property sales data is not available for {data.country === "Scotland" ? "Scotland" : "Northern Ireland"} from free open registries.
-            Registers of Scotland and Northern Ireland's Land Registry publish transaction-level sales data on a paid basis only.
+            Property sales data is not available for {data.country === "Scotland" ? "Scotland" : "Northern Ireland"} at postcode level.
+            Only the council/area average is shown where available.
           </p>
         </div>
       )}
@@ -99,9 +99,8 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
             </div>
 
             <p className="text-xs text-muted-foreground mt-3">
-              This is the <span className="font-semibold">council-area average</span> for {data.councilArea} — the finest free granularity for
-              {" "}{data.country}. Transaction-level per-postcode sales are paid-only there, so this is an
-              area average, not a list of individual sales. Source: {data.source}.
+              This is the <span className="font-semibold">council-area average</span> for {data.councilArea} — the average at council/area level,
+              shown when postcode-specific sales information is not available. Source: {data.source}.
             </p>
           </CardContent>
         </Card>

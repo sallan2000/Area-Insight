@@ -1626,7 +1626,7 @@ export async function registerRoutes(
             annualChange: entry.annualChange,
             source: ukhpi?.source,
             generatedAt: ukhpi?.generatedAt,
-            note: "FREE, official UK House Price Index average for the council area (the finest free granularity for Scotland/Northern Ireland). Transaction-level per-postcode sales are paid-only there, so this is an area average, not a list of individual sales.",
+            note: "UK House Price Index average for the council area — the average at council/area level, shown when postcode-specific sales information is not available. This is an area average, not a list of individual sales.",
           });
         }
         // UKHPI data not loaded — honest fallback.
@@ -1634,7 +1634,7 @@ export async function registerRoutes(
           available: false,
           country,
           coverage: "England & Wales",
-          message: "Free council-area average price (UK HPI) is not loaded. Run `npm run sync:property-prices-ukhpi`. Transaction-level per-postcode sales are paid-only for Scotland/NI, so no free sales list exists.",
+          message: "Council-area average price (UK HPI) is not loaded. Run `npm run sync:property-prices-ukhpi`.",
         });
       }
 

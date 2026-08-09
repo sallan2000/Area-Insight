@@ -34,9 +34,11 @@ Notes on detection (robust to minor header wording):
 
 import csv
 import glob
+import json
 import os
 import re
 import sys
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = os.path.join(ROOT, "server", "data", "import", "raw")
@@ -217,11 +219,52 @@ def extract_car(headers, rows):
 
 # ---------- main ----------
 
+def download_sources():
+    """Read server/data/import/sources.json (you paste the 3 ONS download URLs)
+    and download each into server/data/import/raw/. Returns True if any downloaded."""
+    src = os.path.join(ROOT, "server", "data", "import", "sources.json")
+    if not os.path.isfile(src):
+        return False
+    try:
+        with open(src) as f:
+            cfg = json.load(f)
+    except Exception as e:
+        print(f"[build-census-input] Could not read sources.json: {e}")
+        return False
+    urls = [cfg.get(k) for k in ("age", "tenure", "car") if cfg.get(k)]
+    if not urls:
+        print("[build-census-input] sources.json has no age/tenure/car URLs.")
+        return False
+    os.makedirs(RAW_DIR, exist_ok=True)
+    downloaded = 0
+    for i, u in enumerate(urls):
+        if not u:
+            continue
+        fn = os.path.join(RAW_DIR, f"download_{i}.csv")
+        try:
+            print(f"[build-census-input] downloading ({i}): {u[:90]}")
+            req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (Area-Insight sync)"})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = r.read()
+            with open(fn, "wb") as out:
+                out.write(data)
+            downloaded += 1
+            print(f"   -> saved {len(data)} bytes")
+        except Exception as e:
+            print(f"   -> FAILED: {e}")
+    return downloaded > 0
+
+
 def main():
-    if not os.path.isdir(RAW_DIR):
-        print(f"[build-census-input] No raw dir: {RAW_DIR}")
-        print("Download the three ONS Census 2021 LSOA CSVs (TS001 age, TS004 tenure,")
-        print("TS030 car availability) into server/data/import/raw/ and re-run.")
+    os.makedirs(RAW_DIR, exist_ok=True)
+    # Prefer downloading from sources.json (Replit-side fetch of ONS files).
+    if download_sources():
+        print("[build-census-input] Downloaded sources; merging.")
+    elif not glob.glob(os.path.join(RAW_DIR, "*.csv")):
+        print("[build-census-input] Nothing to merge.")
+        print("Option 1: paste the 3 ONS Census 2021 LSOA download URLs into")
+        print("          server/data/import/sources.json as {age, tenure, car} and re-run.")
+        print("Option 2: drop the 3 raw CSVs into server/data/import/raw/ and re-run.")
         sys.exit(1)
 
     files = sorted(glob.glob(os.path.join(RAW_DIR, "*.csv")))

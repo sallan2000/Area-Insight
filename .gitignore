@@ -24,6 +24,8 @@ server/data/property-prices-ukhpi.json
 server/data/census-demographics.json
 # Drop-in input for the census-demographics sync (joined ONS LSOA21 CSV, free OGL)
 server/data/import/
+# ONS download URLs you paste for the Replit-side fetch (git-ignored; contains no secrets)
+server/data/import/sources.json
 
 # Ground-truth reference data for npm run validate:score (official deprivation indices)
 server/data/imd-england.json

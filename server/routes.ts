@@ -109,24 +109,37 @@ try {
   console.warn("schools.json not found — school scoring will fall back to a neutral 80 until `npm run sync:schools` is run.");
 }
 
-// Property sales (last 12 months), aggregated per outcode from HM Land Registry PPD.
+// Property sales (last 12 months), aggregated per postcode from HM Land Registry PPD.
 // England & Wales only — Scotland (RoS) and NI (LRNI) charge for transaction-level data.
-type PropertySalesEntry = { avgPrice: number; salesCount: number; latestDate: string | null; latestPrice: number | null };
-type PropertySalesData = { generatedAt: string; source: string; coverage: string; note: string; windowMonths: number; cutoff: string; byOutcode: Record<string, PropertySalesEntry> };
-let propertySales: PropertySalesData | null = null;
-try {
-  const basePath = join(process.cwd(), 'server', 'data', 'property-sales.json');
-  const distPath = join(process.cwd(), 'dist', 'data', 'property-sales.json');
-  let data: string;
+// Lazily loaded on first lookup (the file can be hundreds of MB) and cached in memory.
+type PropertySale = { date: string; price: number; type: string };
+type PropertySalesEntry = {
+  avgPrice: number; salesCount: number; minPrice: number; maxPrice: number;
+  latestDate: string | null; latestPrice: number | null; sales: PropertySale[];
+};
+type PropertySalesOutcodeEntry = { avgPrice: number; salesCount: number; latestDate: string | null };
+type PropertySalesData = {
+  generatedAt: string; source: string; coverage: string; note: string; windowMonths: number;
+  cutoff: string; perPostcode: boolean;
+  byPostcode: Record<string, PropertySalesEntry>;
+  byOutcode: Record<string, PropertySalesOutcodeEntry>;
+};
+let propertySalesCache: PropertySalesData | null | undefined = undefined; // undefined = not yet attempted
+function getPropertySales(): PropertySalesData | null {
+  if (propertySalesCache !== undefined) return propertySalesCache;
   try {
-    data = readFileSync(basePath, 'utf-8');
-  } catch {
-    data = readFileSync(distPath, 'utf-8');
+    const basePath = join(process.cwd(), 'server', 'data', 'property-sales.json');
+    const distPath = join(process.cwd(), 'dist', 'data', 'property-sales.json');
+    let data: string;
+    try { data = readFileSync(basePath, 'utf-8'); }
+    catch { data = readFileSync(distPath, 'utf-8'); }
+    propertySalesCache = JSON.parse(data) as PropertySalesData;
+    console.log(`Loaded property-sales for ${Object.keys(propertySalesCache.byPostcode).length} postcodes / ${Object.keys(propertySalesCache.byOutcode).length} outcodes (${propertySalesCache.coverage}, generated ${propertySalesCache.generatedAt.slice(0, 10)})`);
+  } catch (e) {
+    console.warn("property-sales.json not found — Property Sales section will show 'data not available' until `npm run sync:property-sales` is run.");
+    propertySalesCache = null;
   }
-  propertySales = JSON.parse(data) as PropertySalesData;
-  console.log(`Loaded property-sales for ${Object.keys(propertySales.byOutcode).length} outcodes (${propertySales.coverage}, generated ${propertySales.generatedAt.slice(0, 10)})`);
-} catch (e) {
-  console.warn("property-sales.json not found — Property Sales section will show 'data not available' until `npm run sync:property-sales` is run.");
+  return propertySalesCache;
 }
 // Resolves a Scottish postcode → Data Zone (via postcodes.io `codes.lsoa11`) →
 // crime rank, giving a real (annual, zone-level) Safety score instead of N/A.
@@ -1427,6 +1440,7 @@ export async function registerRoutes(
       const geoJson = await geo.json() as any;
       const country = geoJson?.result?.country as string | undefined;
       const outcode = (geoJson?.result?.outcode as string | undefined) || raw.split(" ")[0];
+      const fullPc = (geoJson?.result?.postcode as string | undefined) || raw.replace(/\s+/g, " ").toUpperCase();
 
       // Scotland (RoS) and NI (LRNI) charge for transaction-level data — no free open
       // registry. Don't fabricate; return the honest coverage note.
@@ -1434,39 +1448,72 @@ export async function registerRoutes(
         return res.json({
           available: false,
           country,
-          coverage: propertySales?.coverage ?? "England & Wales",
+          coverage: getPropertySales()?.coverage ?? "England & Wales",
           message: "Transaction-level property sales are not available from free open registries for this nation (Scotland's Registers of Scotland and Northern Ireland's Land Registry charge for this data).",
         });
       }
 
-      if (!propertySales) {
+      const data = getPropertySales();
+      if (!data) {
         return res.json({ available: false, message: "Property sales data not loaded. Run `npm run sync:property-sales`." });
       }
-      const entry = propertySales.byOutcode[outcode];
-      if (!entry) {
+
+      // Preferred: exact postcode (with and without space, normalised).
+      const keysToTry = [fullPc, fullPc.replace(" ", ""), raw.replace(/\s+/g, " ").toUpperCase(), raw.replace(/\s+/g, "").toUpperCase()];
+      let entry: PropertySalesEntry | undefined;
+      for (const k of keysToTry) { const e = data.byPostcode[k]; if (e) { entry = e; break; } }
+
+      if (entry) {
         return res.json({
           available: true,
-          coverage: propertySales.coverage,
+          coverage: data.coverage,
+          postcode: fullPc,
           outcode,
-          found: false,
-          message: `No recorded sales in ${outcode} in the last ${propertySales.windowMonths} months.`,
-          source: propertySales.source,
-          generatedAt: propertySales.generatedAt,
+          found: true,
+          perPostcode: true,
+          avgPrice: entry.avgPrice,
+          salesCount: entry.salesCount,
+          minPrice: entry.minPrice,
+          maxPrice: entry.maxPrice,
+          latestDate: entry.latestDate,
+          latestPrice: entry.latestPrice,
+          sales: entry.sales,
+          windowMonths: data.windowMonths,
+          source: data.source,
+          generatedAt: data.generatedAt,
+          note: data.note,
         });
       }
+
+      // Fallback: district (outcode) summary — still real, just less granular.
+      const ocEntry = data.byOutcode[outcode];
+      if (ocEntry) {
+        return res.json({
+          available: true,
+          coverage: data.coverage,
+          postcode: fullPc,
+          outcode,
+          found: true,
+          perPostcode: false,
+          avgPrice: ocEntry.avgPrice,
+          salesCount: ocEntry.salesCount,
+          latestDate: ocEntry.latestDate,
+          windowMonths: data.windowMonths,
+          source: data.source,
+          generatedAt: data.generatedAt,
+          note: data.note + " ( District-level average shown — no individual sales recorded for this exact postcode in the last 12 months.)",
+        });
+      }
+
       return res.json({
         available: true,
-        coverage: propertySales.coverage,
+        coverage: data.coverage,
+        postcode: fullPc,
         outcode,
-        found: true,
-        avgPrice: entry.avgPrice,
-        salesCount: entry.salesCount,
-        latestDate: entry.latestDate,
-        latestPrice: entry.latestPrice,
-        windowMonths: propertySales.windowMonths,
-        source: propertySales.source,
-        generatedAt: propertySales.generatedAt,
-        note: propertySales.note,
+        found: false,
+        message: `No recorded sales in ${outcode} in the last ${data.windowMonths} months.`,
+        source: data.source,
+        generatedAt: data.generatedAt,
       });
     } catch {
       return res.status(502).json({ available: false, message: "Unable to look up property sales." });

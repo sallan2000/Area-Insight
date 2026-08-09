@@ -1,15 +1,21 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Home } from "lucide-react";
 
+interface PropertySale { date: string; price: number; type: string }
 interface PropertySalesData {
   available: boolean;
   coverage?: string;
+  postcode?: string;
   outcode?: string;
   found?: boolean;
+  perPostcode?: boolean;
   avgPrice?: number;
   salesCount?: number;
+  minPrice?: number;
+  maxPrice?: number;
   latestDate?: string | null;
   latestPrice?: number | null;
+  sales?: PropertySale[];
   windowMonths?: number;
   source?: string;
   generatedAt?: string;
@@ -21,10 +27,10 @@ interface PropertySalesData {
 function gbFormat(n: number): string {
   return "£" + n.toLocaleString("en-GB");
 }
-
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso + "T00:00:00Z");
+  if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
@@ -44,7 +50,6 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
     <section className="space-y-6">
       <h3 className="text-xl font-display font-bold px-1">Property Sales (last 12 months)</h3>
 
-      {/* Not available for Scotland / NI (paid-only data) */}
       {data.available === false && data.country && (
         <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
           <p className="text-sm text-amber-800">
@@ -54,7 +59,6 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
         </div>
       )}
 
-      {/* Available but no sales recorded for this outcode in the window */}
       {data.available && data.found === false && (
         <div className="p-4 bg-gray-50 rounded-lg border border-border">
           <p className="text-sm text-muted-foreground">
@@ -63,7 +67,6 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
         </div>
       )}
 
-      {/* Real data (England & Wales) */}
       {data.available && data.found && (
         <Card className="bg-white border-border shadow-sm">
           <CardContent className="p-6">
@@ -72,37 +75,72 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
                 <Home className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="font-bold">Average sale price — {data.outcode}</h4>
+                <h4 className="font-bold">{data.perPostcode ? `Sales in ${data.postcode}` : `Average for ${data.outcode} district`}</h4>
                 <p className="text-sm text-muted-foreground">
                   HM Land Registry Price Paid Data · last {data.windowMonths} months
                 </p>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Average price</span>
-                <span className="text-lg font-bold text-indigo-700">{gbFormat(data.avgPrice || 0)}</span>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">{data.perPostcode ? "Average price" : "District average"}</p>
+                <p className="text-lg font-bold text-indigo-700">{gbFormat(data.avgPrice || 0)}</p>
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Sales recorded</span>
-                <span className="text-sm font-bold text-foreground">{data.salesCount}</span>
+              <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">Sales recorded</p>
+                <p className="text-lg font-bold text-foreground">{data.salesCount}</p>
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Most recent sale</span>
-                <span className="text-sm font-bold text-foreground">
-                  {fmtDate(data.latestDate)}{data.latestPrice ? ` · ${gbFormat(data.latestPrice)}` : ""}
-                </span>
+              <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">Lowest</p>
+                <p className="text-lg font-bold text-foreground">{data.minPrice ? gbFormat(data.minPrice) : "—"}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">Highest</p>
+                <p className="text-lg font-bold text-foreground">{data.maxPrice ? gbFormat(data.maxPrice) : "—"}</p>
               </div>
             </div>
+
+            {data.perPostcode && data.sales && data.sales.length > 0 && (
+              <div className="mt-2">
+                <p className="text-sm font-bold text-foreground mb-2">Individual sales (most recent first)</p>
+                <div className="max-h-72 overflow-y-auto rounded-lg border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="text-left p-2 font-semibold">Date</th>
+                        <th className="text-right p-2 font-semibold">Price</th>
+                        <th className="text-left p-2 font-semibold">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.sales.map((s, i) => (
+                        <tr key={i} className="border-t border-border odd:bg-white even:bg-gray-50">
+                          <td className="p-2 text-muted-foreground">{fmtDate(s.date)}</td>
+                          <td className="p-2 text-right font-medium">{gbFormat(s.price)}</td>
+                          <td className="p-2 text-muted-foreground">{s.type}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {data.salesCount && data.sales.length < data.salesCount && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Showing {data.sales.length} of {data.salesCount} sales (most recent).
+                  </p>
+                )}
+              </div>
+            )}
+
             <p className="text-xs text-muted-foreground mt-3">
-              Based on {data.salesCount} recorded open-market sales in the {data.outcode} district over the last
-              {" "}{data.windowMonths} months (HM Land Registry, {data.source}). Figures cover the postcode district, not the individual postcode.
+              {data.perPostcode
+                ? `Based on ${data.salesCount} recorded open-market sales in ${data.postcode} over the last ${data.windowMonths} months (HM Land Registry, ${data.source}).`
+                : `District-level average for ${data.outcode} — no individual sales were recorded for this exact postcode in the last ${data.windowMonths} months (HM Land Registry, ${data.source}).`}
             </p>
           </CardContent>
         </Card>
       )}
 
-      {/* Data not loaded / other unavailable */}
       {data.available === false && !data.country && (
         <div className="p-4 bg-gray-50 rounded-lg border border-border">
           <p className="text-sm text-muted-foreground">{data.message || "Property sales data is unavailable."}</p>

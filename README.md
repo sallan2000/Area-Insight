@@ -139,7 +139,7 @@ lets you save a search history and *refresh* a report to pull fresh data.
 | **OpenChargeMap** | Nearest EV chargers (informational only — not scored) |
 | **Resend** | Email share |
 | **Static JSON** (`server/data/`) | Council-tax bands (England/Wales LSOA, Scotland council areas); Scottish SIMD 2020v2 crime proxy (`scotland-datazone-crime.json`); ground-truth reference data for validation (`imd-england.json`, `scotland-simd-rank.json`) |
-| **England schools** | Synced via `npm run sync:schools` from DfE GIAS (directory) + Ofsted outcomes (ratings) → `server/data/schools.json` |
+| **England schools** | Synced via `npm run sync:schools` from Ofsted "Management information — state-funded schools — latest inspections" CSV (URN, phase, postcode, rating) → `server/data/schools.json` (postcodes.io geocodes each school to lat/lng) |
 
 ## Scoring model (technical)
 
@@ -391,6 +391,6 @@ by the harness until their reference data is added.
 | `npm run dev` | tsx server + Vite HMR |
 | `npm run build` / `npm start` | production build / serve |
 | `npm run check` | `tsc` type-check |
-| `npm run sync:schools` | refresh `server/data/schools.json` (England schools + Ofsted) |
+| `npm run sync:schools` | refresh `server/data/schools.json` (England schools + Ofsted ratings, via Ofsted latest-inspections CSV) |
 | `npm run sync:scotland-crime` | refresh `server/data/scotland-datazone-crime.json` (SIMD crime proxy) |
 | `npm run validate:score` | correlation check vs official IMD/SIMD (requires running server) |

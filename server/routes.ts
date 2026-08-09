@@ -158,6 +158,13 @@ function getUkhpi(): UkhpiData | null {
     try { data = readFileSync(basePath, 'utf-8'); }
     catch { data = readFileSync(distPath, 'utf-8'); }
     ukhpiCache = JSON.parse(data) as UkhpiData;
+    // Index council areas by normalized name so we can match postcodes.io's
+    // admin_district (which Scottish/NI postcodes expose instead of an ONS code).
+    const byName: Record<string, UkhpiEntry> = {};
+    for (const entry of Object.values(ukhpiCache.byCode)) {
+      byName[normalizeCouncilName(entry.name)] = entry;
+    }
+    (ukhpiCache as any).byName = byName;
     console.log(`Loaded UKHPI for ${Object.keys(ukhpiCache.byCode).length} geographies (file ${ukhpiCache.fileMonth})`);
   } catch (e) {
     console.warn("property-prices-ukhpi.json not found — S/NI council-area prices unavailable until `npm run sync:property-prices-ukhpi` is run.");
@@ -165,9 +172,30 @@ function getUkhpi(): UkhpiData | null {
   }
   return ukhpiCache;
 }
-// Try council-area code, then nation-level code, in the UKHPI map.
-function ukhpiLookup(councilAreaCode: string | undefined, nationCode: string | undefined, data: UkhpiData): UkhpiEntry | null {
+// Normalize a council-area name for matching (lowercase, collapse whitespace,
+// drop common prefixes/suffixes that differ between UKHPI and postcodes.io).
+function normalizeCouncilName(n: string): string {
+  return n
+    .toLowerCase()
+    .replace(/\b(city of|the|county of)\b/g, "")
+    .replace(/\s*(city|council|district)\s*(council|board)?\s*$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+// Try council-area ONS code, then council-area NAME (postcodes.io admin_district
+// for Scotland/NI has no ONS code), then nation-level code.
+function ukhpiLookup(
+  councilAreaCode: string | undefined,
+  councilAreaName: string | undefined,
+  nationCode: string | undefined,
+  data: UkhpiData
+): UkhpiEntry | null {
   if (councilAreaCode && data.byCode[councilAreaCode]) return data.byCode[councilAreaCode];
+  if (councilAreaName) {
+    const byName = (data as any).byName as Record<string, UkhpiEntry> | undefined;
+    const hit = byName?.[normalizeCouncilName(councilAreaName)];
+    if (hit) return hit;
+  }
   if (nationCode && data.byCode[nationCode]) return data.byCode[nationCode];
   return null;
 }
@@ -1560,9 +1588,14 @@ export async function registerRoutes(
       const outcode = (geoJson?.result?.outcode as string | undefined) || raw.split(" ")[0];
       const fullPc = (geoJson?.result?.postcode as string | undefined) || raw.replace(/\s+/g, " ").toUpperCase();
       const codes = geoJson?.result?.codes || {};
+      const adminDistrict = geoJson?.result?.admin_district as string | undefined;
       // ONS geography codes that map to UKHPI Area_Code:
       //   Scotland -> codes.council_area (S12xxxx); NI -> codes.laua (N09xxxx).
+      // postcodes.io does NOT expose these ONS codes for Scottish/NI postcodes
+      // (codes.council_area / laua come back null), but it DOES give admin_district
+      // (the council name, e.g. "City of Edinburgh"), which we match by name.
       const councilAreaCode = codes.council_area || codes.laua || undefined;
+      const councilAreaName = adminDistrict || undefined;
 
       // Scotland (RoS) and NI (LRNI) charge for transaction-level data. We therefore
       // cannot show a per-postcode sales LIST for free — but UKHPI (free, official)
@@ -1570,8 +1603,16 @@ export async function registerRoutes(
       if (country === "Scotland" || country === "Northern Ireland") {
         const ukhpi = getUkhpi();
         const nationCode = NATION_CODE[country as string];
-        const entry = ukhpi ? ukhpiLookup(councilAreaCode, nationCode, ukhpi) : null;
+        const entry = ukhpi ? ukhpiLookup(councilAreaCode, councilAreaName, nationCode, ukhpi) : null;
         if (entry) {
+          // Resolve the UKHPI Area_Code that actually matched (code, name, or nation).
+          let resolvedCode = (councilAreaCode && ukhpi?.byCode[councilAreaCode]) ? councilAreaCode : null;
+          if (!resolvedCode) {
+            for (const [k, v] of Object.entries(ukhpi?.byCode || {})) {
+              if (v === entry) { resolvedCode = k; break; }
+            }
+          }
+          if (!resolvedCode) resolvedCode = nationCode;
           return res.json({
             available: true,
             country,
@@ -1579,7 +1620,7 @@ export async function registerRoutes(
             postcode: fullPc,
             byCouncilArea: true,
             councilArea: entry.name,
-            councilAreaCode: (councilAreaCode && ukhpi?.byCode[councilAreaCode]) ? councilAreaCode : nationCode,
+            councilAreaCode: resolvedCode,
             avgPrice: entry.avgPrice,
             date: entry.date,
             annualChange: entry.annualChange,

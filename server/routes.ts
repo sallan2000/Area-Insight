@@ -1537,7 +1537,7 @@ export async function registerRoutes(
         { label: "🌳 Green & Health", score: Math.round(scores.greenHealth ?? 0) },
       ].map(({ label, score, source }) => score === null
         ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (data unavailable)</td></tr>`
-        ? `<tr><td style="padding:8px 12px;color:#374151;">${label}${source === 'simd2020' ? ' <span style="font-size:10px;color:#9ca3af;">(SIMD 2020)</span>' : source === 'estimated-ni' ? ' <span style="font-size:10px;color:#9ca3af;">(estimated NI)</span>' : source === 'policeuk-lowconfidence' ? ' <span style="font-size:10px;color:#9ca3af;">(low confidence)</span>' : ''}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
+        : `<tr><td style="padding:8px 12px;color:#374151;">${label}${source === 'simd2020' ? ' <span style="font-size:10px;color:#9ca3af;">(SIMD 2020)</span>' : source === 'estimated-ni' ? ' <span style="font-size:10px;color:#9ca3af;">(estimated NI)</span>' : source === 'policeuk-lowconfidence' ? ' <span style="font-size:10px;color:#9ca3af;">(low confidence)</span>' : ''}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
       ).join("");
 
       const html = `<!DOCTYPE html>

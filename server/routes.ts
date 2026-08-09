@@ -175,7 +175,7 @@ interface ProcessElementsInput {
   asbCrimes: number;
   vehicleCrimes: number;
   drugCrimes: number;
-  nearestPostcodes: string[];
+  nearestPostcodes: { label: string; postcode: string }[];
   streetName: string;
   neighbourhoodInfo: any;
   prefetchedAirQuality: any;
@@ -1151,19 +1151,49 @@ async function fetchAreaMetrics(postcode: string) {
   };
 
   // 2h. Nearest postcodes (shown in UI as "Nearby Neighbourhoods" — no background pre-fetching)
-  const fetchNearest = async (): Promise<string[]> => {
+  // Nearby "neighbourhoods" = neighbouring OUTCODES (districts), not adjacent unit
+  // postcodes. postcodes.io/{pc}/nearest is unreliable (404s for some Scottish/NI
+  // postcodes; returns only the same-building unit postcode for dense areas like
+  // SW1A). outcodes/{outcode}/nearest returns genuine adjacent districts, which is
+  // what "Nearby Neighbourhoods" should mean. For each neighbour district we
+  // reverse-geocode its centroid to a real postcode to navigate to.
+  const fetchNearest = async (): Promise<{ label: string; postcode: string }[]> => {
     const tNearest = Date.now();
     try {
-      const res = await fetch(`https://api.postcodes.io/postcodes/${geoData.result.postcode}/nearest?limit=6`, { signal: AbortSignal.timeout(8000) });
-      if (res.ok) {
-        const nearestData = await res.json();
-        const result = nearestData.result.filter((p: any) => p.postcode !== geoData.result.postcode).slice(0, 5).map((p: any) => p.postcode);
-        console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms`);
-        return result;
-      }
-    } catch {}
-    console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (failed)`);
-    return [];
+      const outcode = geoData.result.outcode;
+      if (!outcode) return [];
+      const nearestRes = await fetch(`https://api.postcodes.io/outcodes/${encodeURIComponent(outcode)}/nearest?limit=8`, { signal: AbortSignal.timeout(8000) });
+      if (!nearestRes.ok) return [];
+      const nearestData = await nearestRes.json();
+      const outcodes = (nearestData.result || [])
+        .map((o: any) => o.outcode)
+        .filter((oc: string) => oc && oc !== outcode)
+        .slice(0, 6);
+      // Reverse-geocode each district centroid to a real postcode (parallel).
+      const results = await Promise.all(outcodes.map(async (oc: string) => {
+        try {
+          const ocRes = await fetch(`https://api.postcodes.io/outcodes/${encodeURIComponent(oc)}`, { signal: AbortSignal.timeout(8000) });
+          if (!ocRes.ok) return null;
+          const ocData = await ocRes.json();
+          const { latitude, longitude } = ocData.result || {};
+          if (latitude == null || longitude == null) return null;
+          const pcRes = await fetch(`https://api.postcodes.io/postcodes?lon=${longitude}&lat=${latitude}&limit=1`, { signal: AbortSignal.timeout(8000) });
+          if (!pcRes.ok) return null;
+          const pcData = await pcRes.json();
+          const postcode = pcData.result?.[0]?.postcode;
+          if (!postcode) return null;
+          return { label: oc, postcode };
+        } catch {
+          return null;
+        }
+      }));
+      const cleaned = results.filter((r: any): r is { label: string; postcode: string } => r !== null).slice(0, 5);
+      console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (${cleaned.length} districts)`);
+      return cleaned;
+    } catch {
+      console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (failed)`);
+      return [];
+    }
   };
 
   // 3. Run all tasks in parallel — nothing below depends on another until all complete

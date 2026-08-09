@@ -915,17 +915,17 @@ export default function Report() {
             <div className="pt-8 border-t border-border">
               <h3 className="text-lg font-display font-bold mb-4">Nearby Neighbourhoods</h3>
               <div className="flex flex-wrap gap-3">
-                {raw.nearestPostcodes.map((pc: string) => (
-                  <Button 
-                    key={pc} 
-                    variant="outline" 
-                    size="sm" 
+                {raw.nearestPostcodes.map((n: any) => (
+                  <Button
+                    key={n.postcode}
+                    variant="outline"
+                    size="sm"
                     className="bg-white hover:bg-gray-100"
                     onClick={() => {
-                      setLocation(`/?postcode=${pc}`);
+                      setLocation(`/?postcode=${encodeURIComponent(n.postcode)}`);
                     }}
                   >
-                    {pc}
+                    {n.label}
                   </Button>
                 ))}
               </div>

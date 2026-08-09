@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useCreateAssessment } from "@/hooks/use-assess";
 import { Search, MapPin, ArrowRight, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +13,7 @@ export default function Home() {
   const [showModal, setShowModal] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [location] = useLocation();
   const { mutate } = useCreateAssessment();
   const { toast } = useToast();
 
@@ -86,15 +88,18 @@ export default function Home() {
     });
   };
 
+  // Reactively run a search whenever the URL carries a ?postcode= param. Keyed on
+  // `location` (wouter) so client-side navigations from "Nearby Neighbourhoods"
+  // re-trigger a search even when Home is already mounted (the previous mount-only
+  // effect left the param stripped and silently did nothing on later clicks).
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const pc = params.get('postcode');
+    const params = new URLSearchParams(location.split("?")[1] || "");
+    const pc = params.get("postcode");
     if (pc) {
       setPostcode(pc);
       handleAssessment(pc);
-      window.history.replaceState({}, '', '/');
     }
-  }, []);
+  }, [location]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

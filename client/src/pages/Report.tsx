@@ -311,6 +311,10 @@ export default function Report() {
   const safetyDrugs   = raw.safetyBreakdown?.drugs   || 0;
   const safetyAsb     = raw.safetyBreakdown?.asb     || 0;
   const safetyOther   = Math.max(0, (raw.crimeCount || 0) - (safetyViolent + safetyTheft + safetyVehicle + safetyDrugs + safetyAsb));
+  // Real per-type crime data only exists for police.uk (England & Wales). Scotland
+  // (SIMD proxy) and NI (estimated) have no specific crime-type stats — the breakdown
+  // UI and any "incidents" wording must be hidden for them.
+  const hasIncidentData = raw.hasIncidentData === true;
   const safetyBreakdownItems = [
     { label: 'Violent & Weapons',     value: safetyViolent,  color: 'bg-red-500' },
     { label: 'Theft & Burglary',      value: safetyTheft,    color: 'bg-orange-500' },
@@ -737,7 +741,10 @@ export default function Report() {
                       <div className="p-4 bg-gray-50 rounded-xl border border-border">
                         <p className="text-xs text-muted-foreground mb-1">Primary Metric</p>
                         <p className="text-xl font-bold text-foreground">
-                          {activeTab === 'safety' ? (raw.crimeDataUnavailable ? "No data" : `${raw.crimeCount} incidents`) : 
+                          {activeTab === 'safety' ? (raw.crimeDataUnavailable ? "No data"
+                            : hasIncidentData ? `${raw.crimeCount} incidents`
+                            : raw.scottishSafety ? "SIMD 2020 Data Zone"
+                            : "Area safety statistics") : 
                            activeTab === 'transport' ? `${(raw.transport?.busStopCount || 0) + (raw.transport?.stationCount || 0)} stops/stations` : 
                            activeTab === 'schools' ? `${raw.schools?.count || 0} schools nearby` : 
                            `${raw.amenities?.totalCount || 0} local services`}
@@ -801,7 +808,7 @@ export default function Report() {
                                 )}
                               </div>
                             )}
-                            {!raw.crimeDataUnavailable && (
+                            {hasIncidentData && (
                               <div className="space-y-3">
                                 {safetyBreakdownItems.map((item) => (
                                   <div key={item.label} className="space-y-1">

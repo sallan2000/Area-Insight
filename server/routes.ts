@@ -660,6 +660,11 @@ function processElements(input: ProcessElementsInput) {
     crimeTrend,
     safetySeverity: severityScore,
     safetySource,
+    // True only when we have real, per-type police.uk incident data. Scotland (SIMD
+    // proxy), Northern Ireland (estimated baseline) and missing-data cases have NO
+    // specific crime-type stats, so the client must NOT show the breakdown UI or
+    // any "incidents reported" wording for them.
+    hasIncidentData: safetySource === 'policeuk',
     scottishSafety: scottishSafetyScore != null ? {
       score: scottishSafetyScore,
       crimeRank: scottishSafetyRank,
@@ -671,13 +676,13 @@ function processElements(input: ProcessElementsInput) {
       dataZone: null,
       reason: 'no-datazone', // postcodes.io returned no Data Zone for this postcode
     } : null),
-    safetyBreakdown: {
+    safetyBreakdown: safetySource === 'policeuk' ? {
       violent: violentCrimes,
       theft: burglaryCrimes,
       asb: asbCrimes,
       vehicle: vehicleCrimes,
       drugs: drugCrimes
-    },
+    } : null,
     // Green space: reported as descriptive context (count of green areas within
     // 1.5km + distance to the nearest), NOT a synthetic 0-100. Raw OSM element counts
     // track tagging density rather than real greenness, so scoring them is misleading.

@@ -188,7 +188,7 @@ export function ReportExportView({ report, scores, raw, overallScore, safetyBrea
               Annual, small-area (≈700 people) Scottish Government statistics — not realtime street crime.
             </div>
           </div>
-        ) : (
+        ) : raw?.hasIncidentData ? (
           <div>
             <div style={{ fontSize: 12, color: "#374151", marginBottom: 10 }}>
               <strong>{raw.crimeCount || 0}</strong> incidents reported in the last 12 months
@@ -206,6 +206,10 @@ export function ReportExportView({ report, scores, raw, overallScore, safetyBrea
                 </div>
               ))}
             </div>
+          </div>
+        ) : (
+          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#374151" }}>
+            Area safety statistics — no per-type incident breakdown is available for this postcode.
           </div>
         )}
       </div>

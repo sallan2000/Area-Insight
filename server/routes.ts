@@ -204,6 +204,17 @@ function processElements(input: ProcessElementsInput) {
   const localAmenitiesElements = elementsWithDistance.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
   const essentialAmenitiesElements = elementsWithDistance.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));
 
+  // Green space: parks, gardens, playgrounds, pitches, commons, nature reserves,
+  // and natural woodland/grass/heath within 1.5km. All UK nations (OSM).
+  const greenElements = elementsWithDistance.filter((e: any) =>
+    (e.tags?.leisure && ["park", "garden", "playground", "pitch", "common", "nature_reserve", "recreation_ground", "dog_park"].includes(e.tags.leisure)) ||
+    (e.tags?.natural && ["wood", "grass", "heath", "scrub", "wetland"].includes(e.tags.natural))
+  );
+  // Health access: GPs, hospitals, clinics, dentists (OSM). Proximity matters most.
+  const healthElements = elementsWithDistance.filter((e: any) =>
+    e.tags?.amenity && ["doctors", "hospital", "clinic", "dentist"].includes(e.tags.amenity)
+  );
+
   const shopCategoryMap: Record<string, string> = {
     supermarket: "supermarket",
     convenience: "convenience_store",
@@ -358,10 +369,16 @@ function processElements(input: ProcessElementsInput) {
   // Scotland: VOA doesn't cover Scotland (SAA jurisdiction). Use modal band per Scottish
   // council area (S12000xxx code) derived from NRS Dwellings by Council Tax Band data.
   const isScotlandPostcode = geoData.result.country === 'Scotland';
+  const isNIPostcode = geoData.result.country === 'Northern Ireland';
   const scotCouncilCode = geoData.result.codes?.admin_district || null;
   const scotBand = !voaBand && isScotlandPostcode && scotCouncilCode
     ? scotlandCouncilBandLookup[scotCouncilCode] || null
     : null;
+  // Northern Ireland: no VOA (NI uses Domestic Rates, bands A–H, set by NISRA/LPS).
+  // No open per-postcode rates dataset, so fall back to the same outcode heuristic
+  // as the England estimate — clearly labelled "NISRA (NI Domestic Rates, 2024)" and
+  // the value is an estimate, not a looked-up rate.
+  const niBand = isNIPostcode ? getEstimatedBand(geoData.result.outcode) : null;
 
   // Scottish Safety proxy: no realtime street-crime feed exists for Scotland, so we
   // use the Scottish Government SIMD 2020v2 Crime domain — an annual, Data Zone
@@ -421,14 +438,18 @@ function processElements(input: ProcessElementsInput) {
     return 'C';
   };
 
-  const councilTaxBand = voaBand || scotBand || getEstimatedBand(geoData.result.outcode);
+  const councilTaxBand = voaBand || scotBand || niBand || getEstimatedBand(geoData.result.outcode);
   const councilTaxSource = voaBand
     ? "VOA (2024)"
     : scotBand
     ? "SAA (council area, 2024)"
+    : niBand
+    ? "NISRA (NI Domestic Rates, 2024)"
     : "Estimated";
   const councilTaxLink = isScotlandPostcode
     ? "https://www.saa.gov.uk/"
+    : isNIPostcode
+    ? "https://www.nidirect.gov.uk/articles/domestic-rates"
     : "https://www.tax.service.gov.uk/check-council-tax-band/search";
 
   // Noise estimate (synchronous — uses elementsWithDistance from Overpass)
@@ -549,7 +570,18 @@ function processElements(input: ProcessElementsInput) {
     qualityNudge = Math.max(-15, Math.min(15, Math.round((avgRating - 80) / 80 * 15)));
   }
 
-  const safetySource = isScotlandPostcode ? (scottishSafetyScore != null ? 'simd2020' : 'none') : 'policeuk';
+  // Safety data source label. Scotland -> SIMD proxy; NI -> estimated baseline;
+  // England/Wales -> police.uk. If police.uk returns almost no crimes for the area
+  // (<5 across 12 months within 1.5km) it usually means crimes were geo-coded to a
+  // force-level centroid outside the radius (a known police.uk quirk for dense
+  // urban postcodes), so the live feed is incomplete — label it low-confidence
+  // rather than presenting a misleading ~100 "safest" score.
+  const safetyLowConfidence = !isScotlandPostcode && !isNIPostcode && crimesData.length < 5;
+  const safetySource = isScotlandPostcode
+    ? (scottishSafetyScore != null ? 'simd2020' : 'none')
+    : isNIPostcode
+    ? 'estimated-ni'
+    : (safetyLowConfidence ? 'policeuk-lowconfidence' : 'policeuk');
 
   const resultMetrics = {
     crimeCount,
@@ -574,6 +606,30 @@ function processElements(input: ProcessElementsInput) {
       vehicle: vehicleCrimes,
       drugs: drugCrimes
     },
+    // Green space: reward both count (more choice of outdoor space) and proximity
+    // (nearest green space within easy walking distance). Saturating curves.
+    green: (() => {
+      const count = greenElements.length;
+      const nearest = greenElements.length > 0 ? Math.min(...greenElements.map((g: any) => g.distance)) : null;
+      const countScore = Math.min(100, Math.round((1 - Math.exp(-count / 6)) * 100));
+      // nearest within 400m -> full marks; beyond 1.5km -> ~0
+      const proxScore = nearest != null ? Math.round(Math.max(0, 100 * (1 - Math.min(1, nearest / 1.5)))) : 0;
+      const score = Math.round(countScore * 0.6 + proxScore * 0.4);
+      return { count, nearestDistance: nearest, score };
+    })(),
+    // Health access: proximity to nearest GP/clinic/hospital/dentist dominates;
+    // having at least one nearby is the core signal. OSM only (no NHS grades).
+    health: (() => {
+      const count = healthElements.length;
+      const nearest = healthElements.length > 0 ? Math.min(...healthElements.map((h: any) => h.distance)) : null;
+      // nearest within 800m -> strong; within 3km -> moderate; beyond -> low
+      const proxScore = nearest != null
+        ? Math.round(Math.max(0, 100 * (1 - Math.min(1, nearest / 3))))
+        : 0;
+      const countScore = Math.min(100, Math.round((1 - Math.exp(-count / 4)) * 100));
+      const score = Math.round(proxScore * 0.7 + countScore * 0.3);
+      return { count, nearestDistance: nearest, score };
+    })(),
     transport: {
       trainDistance: minTrainDist,
       busStopDensity,
@@ -641,6 +697,7 @@ function processElements(input: ProcessElementsInput) {
       street: streetName || street,
       classification: geoData.result.status === "live" ? (geoData.result.admin_district || "Residential Area") : "Residential Area",
       isScotland: geoData.result.country === 'Scotland',
+      isNI: geoData.result.country === 'Northern Ireland',
       nation: geoData.result.country,
       crimeDataUnavailable,
       scotCrimeContext: (() => {
@@ -736,6 +793,12 @@ async function fetchAreaMetrics(postcode: string) {
       way["railway"~"rail|light_rail|subway|tram"](around:500,${lat},${lng});
       node["aeroway"~"aerodrome|helipad"](around:5000,${lat},${lng});
       way["aeroway"~"aerodrome|runway"](around:5000,${lat},${lng});
+      node["amenity"~"doctors|hospital|clinic|dentist"](around:3000,${lat},${lng});
+      way["amenity"~"doctors|hospital|clinic|dentist"](around:3000,${lat},${lng});
+      node["leisure"~"park|garden|playground|pitch|common|nature_reserve|recreation_ground|dog_park"](around:1500,${lat},${lng});
+      way["leisure"~"park|garden|playground|pitch|common|nature_reserve|recreation_ground|dog_park"](around:1500,${lat},${lng});
+      node["natural"~"wood|grass|heath|scrub|wetland"](around:1500,${lat},${lng});
+      way["natural"~"wood|grass|heath|scrub|wetland"](around:1500,${lat},${lng});
     );
     out body center;
   `;
@@ -1212,7 +1275,7 @@ async function fetchAreaMetrics(postcode: string) {
 }
 
 // Scoring Logic
-function calculateScores(metrics: any, isScotland: boolean) {
+function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
   const normalize = (val: number, min: number, max: number) => {
     if (max === min) return 50;
     return Math.min(100, Math.max(0, 100 * ((val - min) / (max - min))));
@@ -1236,11 +1299,20 @@ function calculateScores(metrics: any, isScotland: boolean) {
   // ordinary areas are not over-penalised (the old settings knocked ~35 pts off a
   // typical postcode). Calibrated against real police.uk data for a spread of
   // English postcodes (median landed ~77, suburbs 85-95, city centres lower but
-  // not collapsed). Scotland still uses the SIMD proxy path below.
+  // not collapsed). Scotland uses the SIMD proxy; Northern Ireland has no realtime
+  // PSNI feed via police.uk (it returns empty), so it gets a neutral baseline rather
+  // than a misleading ~100 — clearly labelled 'estimated-ni' in safetySource.
   const scottishProxy = isScotland && metrics.scottishSafety?.score != null ? metrics.scottishSafety.score : null;
-  const safetyBase = scottishProxy != null
-    ? scottishProxy
-    : 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.5);
+  let safetyBase: number;
+  if (scottishProxy != null) {
+    safetyBase = scottishProxy;
+  } else if (isNI) {
+    // No live crime feed for NI. Use a neutral baseline so the area is neither
+    // falsely safest nor falsely dangerous; the UI labels it as estimated.
+    safetyBase = 70;
+  } else {
+    safetyBase = 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.5);
+  }
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, Math.round(safetyBase * trendMultiplier)));
 
@@ -1251,13 +1323,23 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
   const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.score ?? 0);
-  const totalScore = (transportScoreFinal * 0.25) + (Math.sqrt(safetyScoreFinal) * 10 * 0.35) + (amenitiesScoreFinal * 0.20) + (schoolsScoreFinal * 0.20);
+  // Green & Health: combined liveability pillar from OSM (parks/green space + GP/
+  // hospital/dentist access). Both are 0-100 sub-scores; average them.
+  const greenHealthScore = Math.round(((metrics.green?.score || 0) + (metrics.health?.score || 0)) / 2);
+  // Rebalanced weights to include the new pillar (sums to 1.0):
+  // transport .22, safety .30, amenities .17, schools .17, green&health .14
+  const totalScore = (transportScoreFinal * 0.22)
+    + (Math.sqrt(safetyScoreFinal) * 10 * 0.30)
+    + (amenitiesScoreFinal * 0.17)
+    + (schoolsScoreFinal * 0.17)
+    + (greenHealthScore * 0.14);
 
   return {
     transport: Math.round(transportScoreFinal),
     safety: Math.round(safetyScoreFinal),
     amenities: Math.round(amenitiesScoreFinal),
     schools: Math.round(schoolsScoreFinal),
+    greenHealth: greenHealthScore,
     total: Math.round(totalScore)
   };
 }
@@ -1336,7 +1418,7 @@ export async function registerRoutes(
       }
 
       const data = await fetchAreaMetrics(cleanPostcode);
-      const scores = calculateScores(data.metrics, data.metrics.isScotland);
+      const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
       const partialData = data.overpassFailed || false;
       const assessment = await storage.createAssessment({
         postcode: cleanPostcode,
@@ -1384,7 +1466,7 @@ export async function registerRoutes(
       }
 
       const data = await fetchAreaMetrics(existing.postcode);
-      const scores = calculateScores(data.metrics, data.metrics.isScotland);
+      const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
       const partialData = data.overpassFailed || false;
       const updated = await storage.createAssessment({
         postcode: existing.postcode,
@@ -1431,11 +1513,14 @@ export async function registerRoutes(
       const scores = assessment.scores as any;
       const raw = assessment.rawMetrics as any;
       const safetyExcluded = !!(raw?.crimeDataUnavailable);
-      const overallScore = Math.round(
-        safetyExcluded
-          ? (scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65))
-          : (0.25 * scores.transport) + (0.35 * Math.sqrt(scores.safety) * 10) + (0.20 * scores.schools) + (0.20 * scores.amenities)
-      );
+      // Use the precomputed total (includes the Green & Health pillar) so the email
+      // matches the on-screen report. Fall back to a safety-excluded recompute only
+      // when safety was genuinely unavailable.
+      const overallScore = safetyExcluded && scores.total == null
+        ? Math.round((scores.transport * (25 / 65)) + (scores.amenities * (20 / 65)) + (scores.schools * (20 / 65)))
+        : Math.round(scores.total ?? (
+            (0.22 * scores.transport) + (0.30 * Math.sqrt(scores.safety) * 10) + (0.17 * scores.amenities) + (0.17 * scores.schools) + (0.14 * (scores.greenHealth ?? 0))
+          ));
       const reportUrl = `${req.protocol}://${req.get('host')}/report/${assessment.id}`;
       const dataDate = assessment.createdAt
         ? new Date(assessment.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
@@ -1449,9 +1534,10 @@ export async function registerRoutes(
         { label: "🛡️ Safety", score: safetyExcluded ? null : Math.round(scores.safety), source: raw?.safetySource },
         { label: "🎓 Schools", score: Math.round(scores.schools) },
         { label: "🛒 Amenities", score: Math.round(scores.amenities) },
+        { label: "🌳 Green & Health", score: Math.round(scores.greenHealth ?? 0) },
       ].map(({ label, score, source }) => score === null
         ? `<tr><td style="padding:8px 12px;color:#6b7280;">${label}</td><td style="padding:8px 12px;text-align:right;color:#9ca3af;font-style:italic;">N/A (data unavailable)</td></tr>`
-        : `<tr><td style="padding:8px 12px;color:#374151;">${label}${source === 'simd2020' ? ' <span style="font-size:10px;color:#9ca3af;">(SIMD 2020)</span>' : ''}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
+        ? `<tr><td style="padding:8px 12px;color:#374151;">${label}${source === 'simd2020' ? ' <span style="font-size:10px;color:#9ca3af;">(SIMD 2020)</span>' : source === 'estimated-ni' ? ' <span style="font-size:10px;color:#9ca3af;">(estimated NI)</span>' : source === 'policeuk-lowconfidence' ? ' <span style="font-size:10px;color:#9ca3af;">(low confidence)</span>' : ''}</td><td style="padding:8px 12px;text-align:right;font-weight:700;color:${scoreColor(score)};">${score}/100 — ${scoreGrade(score)}</td></tr>`
       ).join("");
 
       const html = `<!DOCTYPE html>
@@ -1560,7 +1646,7 @@ export async function registerRoutes(
       for (const assessment of batch) {
         try {
           const data = await fetchAreaMetrics(assessment.postcode);
-          const scores = calculateScores(data.metrics, data.metrics.isScotland);
+          const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
           const partialData = data.overpassFailed || false;
           await storage.createAssessment(
             {

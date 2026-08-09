@@ -45,3 +45,10 @@ fi
 npm install || echo "[post-merge] WARNING: npm install failed (possibly a blocked package version) — continuing with existing node_modules"
 
 npm run db:push
+
+# Refresh the synced reference data (England schools + Scottish SIMD crime proxy).
+# These files are git-ignored (generated, not committed) and consumed by the server
+# from the local filesystem, so they MUST be regenerated on Replit after every pull.
+# Delegates to scripts/refresh-data.sh (also used by the weekly Scheduled Deployment).
+echo "[post-merge] Refreshing synced reference data..."
+bash scripts/refresh-data.sh || echo "[post-merge] WARNING: refresh-data.sh had non-fatal failures (upstream blip?) — server will degrade gracefully"

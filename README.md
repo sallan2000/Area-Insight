@@ -184,6 +184,10 @@ total = transport * 0.25
   the options basis — no fake grades. Each matched England school's **Ofsted rating**
   is shown as a colour-coded badge (Outstanding/Good/Requires improvement/Inadequate)
   beside its name + distance in both the on-screen report and the shared/PDF export.
+  Matching an OSM school to its Ofsted record is by **outcode + name** (the synced
+  school's postcode outcode must match the search postcode's outcode, plus a strict
+  name comparison — token overlap ≥70% or a near-complete prefix). This keeps ratings
+  England-only and avoids cross-postcode collisions (e.g. two "St Mary's" schools).
 - **Amenities** blends count, category diversity, top-rated count, and supermarket
   proximity.
 

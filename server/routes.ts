@@ -271,18 +271,42 @@ function processElements(input: ProcessElementsInput) {
   };
 
   // Enrich an OSM school with its Ofsted rating when it matches a synced England
-  // school by name + proximity (no stable ID in OSM). Keeps ratings England-only.
+  // school. Matching is deliberately strict because the rating is now shown to users:
+  //  - outcode backstop: the synced school's postcode outcode must equal the search
+  //    postcode's outcode (free at runtime — schools.json stores the postcode), so a
+  //    school in "SW1A" can never adopt a rating from an "M14" school.
+  //  - name match: token-overlap (≥70% of the shorter name's tokens shared) OR one
+  //    normalised name is a near-complete prefix of the other — replaces the loose
+  //    12-char substring that let "St Mary's A" grab "St Mary's B".
+  //  - proximity remains a tiebreaker (closest qualifying match wins).
+  const searchOutcode = (geoData.result.postcode || "").replace(/\s+/g, "").toUpperCase().split(/(?=[0-9])/)[0];
+  const norm = (n: string) => (n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Tokenise on word boundaries of the raw name (spaces/apostrophes), NOT after
+  // stripping separators — otherwise "St Mary's" collapses to one token and the
+  // overlap test can never fire. Drop trivial tokens (<3 chars, e.g. the lone "s"
+  // left by "St Mary's") so common fragments don't dominate the overlap score.
+  const tokens = (n: string) => new Set((n || "").toLowerCase().match(/[a-z0-9]+/g)?.filter((t) => t.length >= 3) || []);
+  const namesMatch = (a: string, b: string): boolean => {
+    const na = norm(a), nb = norm(b);
+    if (na.length < 4 || nb.length < 4) return false;
+    // near-complete prefix: longer name starts with ≥80% of the shorter
+    const [short, long] = na.length <= nb.length ? [na, nb] : [nb, na];
+    if (long.startsWith(short) && short.length >= Math.ceil(long.length * 0.8)) return true;
+    // token overlap: share ≥70% of the shorter name's meaningful tokens
+    const ta = tokens(a), tb = tokens(b);
+    if (ta.size === 0 || tb.size === 0) return false;
+    let shared = 0;
+    tb.forEach((t) => { if (ta.has(t)) shared++; });
+    const overlap = shared / Math.min(ta.size, tb.size);
+    return overlap >= 0.7;
+  };
   const enrichWithRating = (s: { name: string; distance: number; phase: "primary" | "secondary" }) => {
     const candidates = schoolsLookup
       .filter((x) => x.nation === "england" && x.phase === s.phase && x.name && s.name &&
-        Math.abs(getDistance(lat, lng, x.lat, x.lng) - s.distance) < 0.08)
+        x.postcode && searchOutcode && x.postcode.replace(/\s+/g, "").toUpperCase().startsWith(searchOutcode) &&
+        Math.abs(getDistance(lat, lng, x.lat, x.lng) - s.distance) < 0.15)
       .sort((a, b) => getDistance(lat, lng, a.lat, a.lng) - getDistance(lat, lng, b.lat, b.lng));
-    const match = candidates.find((x) => {
-      const a = (x.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const b = (s.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      return a.length > 4 && b.length > 4 &&
-        (a.includes(b.slice(0, 12)) || b.includes(a.slice(0, 12)));
-    });
+    const match = candidates.find((x) => namesMatch(x.name, s.name));
     return match ? { ...s, rating: match.rating, ratingScore: match.ratingScore } : s;
   };
 

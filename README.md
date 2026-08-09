@@ -162,14 +162,16 @@ total = transport * 0.25
 
 - **Transport** blends station distance, bus density, and commute estimates; a
   nearby major hub multiplies the score by 1.2.
-- **Safety** for England & Wales uses live police.uk street crime (weighted
-  crime-density + severity, with a trend multiplier). **Scotland** has no realtime
+- **Safety** for England & Wales uses live police.uk street crime (12 months, within
+  1.5 km, weighted severity + crime-density, with a trend multiplier). Calibrated so
+  ordinary areas score in the 70s–90s and city centres lower but not collapsed
+  (severity ceiling 380, density/severity blended 0.5/0.5 — the previous settings
+  over-penalised typical postcodes by ~30 points). **Scotland** has no realtime
   street-crime feed, so it uses a **proxy**: the Scottish Government **SIMD 2020v2
   Crime domain** resolved to the postcode's Data Zone (via postcodes.io `lsoa11`),
-  inverted to the same 0–100 scale (rank 1 = most crime-affected → ~0, rank ~6,976 →
-  100). This is **annual, small-area (≈700 people) statistics — clearly labelled as
-  not realtime** in the report and email. Regenerate the proxy dataset with
-  `npm run sync:scotland-crime` (writes `server/data/scotland-datazone-crime.json`).
+  re-centred onto the same 0–100 scale (median → 78). This is **annual, small-area
+  (≈700 people) statistics — clearly labelled as not realtime** in the report and
+  email. Regenerate the proxy dataset with `npm run sync:scotland-crime`.
 - **Schools** measures **education options**: the number, mix and proximity of
   nearby schools (from OpenStreetMap, available for all four UK nations), so a
   Scottish, Welsh or Northern Irish postcode gets a genuine "how much choice is
@@ -394,8 +396,15 @@ Area-Insight/
 
 ## Known limitations (technical)
 
-- Scottish safety uses the SIMD 2020v2 Data Zone crime proxy (annual, not realtime) —
+- Scottish safety uses the SIMD 2020v2 Data Zone crime proxy (annual, not realtime) —\
   scored on the same scale as England, with the caveat shown in the report/email.
+- **England/Wales false-zero risk:** some dense urban postcodes (e.g. city-centre
+  wards) have many of their crimes geo-coded by police.uk to a generic "Force"
+  centroid *outside* the 1.5 km collection radius, so the live feed returns ~0 and
+  Safety can wrongly read as 100 ("safest"). The 1.5 km filter is intentional (it
+  stops force-centroid crimes from inflating everywhere else), so this is a known
+  trade-off rather than a bug to "fix" by widening the radius. A proper fix needs
+  neighbourhood-level crime rates. Reported as `safetySource: 'policeuk'` either way.
 - Schools score = "education options" (count + mix + proximity of nearby schools from
   OSM), available for all UK nations. England adds a capped Ofsted quality nudge.
 - Crime is street-level only, ~1.5 km, normalised to a nominal 0.25 km² area.

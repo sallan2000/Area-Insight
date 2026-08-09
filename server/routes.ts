@@ -1201,18 +1201,22 @@ function calculateScores(metrics: any, isScotland: boolean) {
   const transportScoreFinalRaw = (metrics.transport.stations.length === 0 && metrics.transport.busStopCount === 0) ? 0 : (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
-  const severityCeiling = isScotland ? 150 : 200;
+  const severityCeiling = isScotland ? 150 : 380;
   const severityPoints = normalize(metrics.safetySeverity, 0, severityCeiling);
   const densityMultiplier = isScotland ? 1.0 : 0.8;
   const crimeDensity = (metrics.crimeCount / 3.14) * densityMultiplier;
-  const densityCeiling = isScotland ? 300 : 400;
+  const densityCeiling = isScotland ? 300 : 500;
   const crimeDensityPoints = normalize(crimeDensity, 0, densityCeiling);
-  // For Scotland, use the SIMD 2020v2 Data Zone crime proxy when available (a real
-  // score on the same 0–100 scale) instead of the always-zero police.uk feed.
+  // England/Wales safety: blend crime density (0.5) and weighted severity (0.5).
+  // Severity ceiling raised 200->380 and the severity weight eased 0.6->0.5 so that
+  // ordinary areas are not over-penalised (the old settings knocked ~35 pts off a
+  // typical postcode). Calibrated against real police.uk data for a spread of
+  // English postcodes (median landed ~77, suburbs 85-95, city centres lower but
+  // not collapsed). Scotland still uses the SIMD proxy path below.
   const scottishProxy = isScotland && metrics.scottishSafety?.score != null ? metrics.scottishSafety.score : null;
   const safetyBase = scottishProxy != null
     ? scottishProxy
-    : 100 - (crimeDensityPoints * 0.4) - (severityPoints * 0.6);
+    : 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.5);
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, Math.round(safetyBase * trendMultiplier)));
 

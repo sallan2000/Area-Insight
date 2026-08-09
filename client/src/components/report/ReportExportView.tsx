@@ -64,11 +64,29 @@ function SectionHeading({ Icon, title, score, unavailable }: { Icon: any; title:
 
 function ItemGrid({ items, category }: { items: any[]; category: string }) {
   if (!items.length) return <p style={{ fontSize: 11, color: "#9ca3af", fontStyle: "italic", margin: 0 }}>No data available nearby</p>;
+  // Ofsted rating → label + colour (rating 1=Outstanding … 4=Inadequate).
+  const ofsted = (rating: number) => {
+    const map: Record<number, { label: string; bg: string; fg: string; bd: string }> = {
+      1: { label: "Outstanding", bg: "#dcfce7", fg: "#166534", bd: "#86efac" },
+      2: { label: "Good", bg: "#dbeafe", fg: "#1e40af", bd: "#93c5fd" },
+      3: { label: "Requires improvement", bg: "#fef3c7", fg: "#92400e", bd: "#fcd34d" },
+      4: { label: "Inadequate", bg: "#fee2e2", fg: "#991b1b", bd: "#fca5a5" },
+    };
+    const b = map[rating];
+    if (!b) return null;
+    return (
+      <span style={{ fontSize: 8, fontWeight: 600, background: b.bg, color: b.fg, border: `1px solid ${b.bd}`, borderRadius: 4, padding: "1px 5px", marginLeft: 4 }}>
+        Ofsted: {b.label}
+      </span>
+    );
+  };
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
       {items.map((item: any, i: number) => (
         <div key={i} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 7, padding: "5px 9px" }}>
-          <div style={{ fontWeight: 600, fontSize: 11, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+          <div style={{ fontWeight: 600, fontSize: 11, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {item.name}{item.rating != null && ofsted(item.rating)}
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
             <span style={{ fontSize: 9, color: "#9ca3af", textTransform: "uppercase" }}>{(item.category || category).replace(/_/g, " ")}</span>
             <span style={{ fontSize: 9, fontWeight: 600, color: "#2563eb" }}>{item.distance}km</span>

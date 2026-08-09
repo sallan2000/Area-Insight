@@ -103,16 +103,32 @@ export default function Report() {
     const visibleItems = isExpanded ? items : items.slice(0, 5);
     const hasMore = items.length > 5;
 
+    // Ofsted rating → label + Tailwind colour (rating 1=Outstanding … 4=Inadequate).
+    const ofstedBadge = (rating: number) => {
+      const map: Record<number, { label: string; cls: string }> = {
+        1: { label: "Ofsted: Outstanding", cls: "bg-green-100 text-green-700 border-green-300" },
+        2: { label: "Ofsted: Good", cls: "bg-blue-100 text-blue-700 border-blue-300" },
+        3: { label: "Ofsted: Requires improvement", cls: "bg-amber-100 text-amber-700 border-amber-300" },
+        4: { label: "Ofsted: Inadequate", cls: "bg-red-100 text-red-700 border-red-300" },
+      };
+      const b = map[rating];
+      if (!b) return null;
+      return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${b.cls}`}>{b.label}</span>;
+    };
+
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {visibleItems.map((item: any, i: number) => (
             <li key={i} className="text-xs bg-white p-2 rounded-lg border border-border shadow-sm list-none">
               <p className="font-bold text-foreground line-clamp-1">{item.name}</p>
-              <div className="flex justify-between items-center mt-1">
+              <div className="flex justify-between items-center mt-1 gap-2">
                 <span className="text-[10px] text-muted-foreground uppercase">{(item.category || category).replace(/_/g, ' ')}</span>
                 <span className="font-medium text-primary">{item.distance}km</span>
               </div>
+              {item.rating != null && (
+                <div className="mt-1">{ofstedBadge(item.rating)}</div>
+              )}
             </li>
           ))}
         </div>

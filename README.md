@@ -181,7 +181,9 @@ total = transport * 0.25
   more usable). **England only** gets a bonus quality nudge from synced Ofsted
   ratings (`server/data/schools.json`, via `npm run sync:schools`), capped at ±15 so
   it refines rather than dominates. Where no rating feed exists, the score is purely
-  the options basis — no fake grades.
+  the options basis — no fake grades. Each matched England school's **Ofsted rating**
+  is shown as a colour-coded badge (Outstanding/Good/Requires improvement/Inadequate)
+  beside its name + distance in both the on-screen report and the shared/PDF export.
 - **Amenities** blends count, category diversity, top-rated count, and supermarket
   proximity.
 

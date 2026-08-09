@@ -1301,7 +1301,11 @@ async function fetchAreaMetrics(postcode: string) {
           const pcData = await pcRes.json();
           const postcode = pcData.result?.[0]?.postcode;
           if (!postcode) return null;
-          return { label: oc, postcode };
+          // Show the resolved FULL postcode (e.g. "EH2 4DF"), not the outcode
+          // (e.g. "EH2"), so what's displayed always matches what navigation uses.
+          // Neighbours that didn't resolve to a full postcode return null above and
+          // are filtered out, so only complete postcodes are listed.
+          return { label: postcode, postcode };
         } catch {
           return null;
         }

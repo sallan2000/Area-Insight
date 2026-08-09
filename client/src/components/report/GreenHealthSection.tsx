@@ -4,11 +4,13 @@ import { Trees, HeartPulse } from "lucide-react";
 interface GreenSpace {
   count?: number;
   nearestDistance?: number | null;
+  failed?: boolean;
 }
 
 interface HealthAccess {
   count?: number;
   nearestDistance?: number | null;
+  failed?: boolean;
 }
 
 interface GreenHealthSectionProps {
@@ -26,6 +28,8 @@ function distanceLabel(km: number | undefined | null): string {
 export function GreenHealthSection({ green, health, overpassFailed }: GreenHealthSectionProps) {
   const greenCount = green?.count ?? 0;
   const healthCount = health?.count ?? 0;
+  const greenFailed = green?.failed ?? false;
+  const healthFailed = health?.failed ?? false;
 
   return (
     <section className="space-y-6">
@@ -33,6 +37,11 @@ export function GreenHealthSection({ green, health, overpassFailed }: GreenHealt
       {overpassFailed && (
         <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2" data-testid="notice-overpass-failed-green">
           <span className="text-xs text-amber-700">Map data temporarily unavailable — figures may be incomplete. Try refreshing the report later.</span>
+        </div>
+      )}
+      {!overpassFailed && (greenFailed || healthFailed) && (
+        <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-2" data-testid="notice-greenhealth-unavailable">
+          <span className="text-xs text-amber-700">Green space / health data couldn't be retrieved from OpenStreetMap just now (the map service was slow). The area very likely does have parks and GP surgeries — try refreshing the report to load them.</span>
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -50,14 +59,22 @@ export function GreenHealthSection({ green, health, overpassFailed }: GreenHealt
               </div>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Green areas within 1.5 km</span>
-                <span className="text-sm font-bold text-green-700">{greenCount}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Nearest green space</span>
-                <span className="text-sm font-bold text-foreground">{distanceLabel(green?.nearestDistance)}</span>
-              </div>
+              {greenFailed ? (
+                <div className="p-3 bg-gray-50 rounded-lg border border-border text-sm text-muted-foreground">
+                  Temporarily unavailable — the map service was slow. Refresh the report to retry.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                    <span className="text-sm font-bold text-foreground">Green areas within 1.5 km</span>
+                    <span className="text-sm font-bold text-green-700">{greenCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                    <span className="text-sm font-bold text-foreground">Nearest green space</span>
+                    <span className="text-sm font-bold text-foreground">{distanceLabel(green?.nearestDistance)}</span>
+                  </div>
+                </>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-3">
               Counts parks, gardens, playgrounds, commons, nature reserves, woodland and public greens
@@ -79,14 +96,22 @@ export function GreenHealthSection({ green, health, overpassFailed }: GreenHealt
               </div>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Facilities within 3 km</span>
-                <span className="text-sm font-bold text-rose-700">{healthCount}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
-                <span className="text-sm font-bold text-foreground">Nearest facility</span>
-                <span className="text-sm font-bold text-foreground">{distanceLabel(health?.nearestDistance)}</span>
-              </div>
+              {healthFailed ? (
+                <div className="p-3 bg-gray-50 rounded-lg border border-border text-sm text-muted-foreground">
+                  Temporarily unavailable — the map service was slow. Refresh the report to retry.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                    <span className="text-sm font-bold text-foreground">Facilities within 3 km</span>
+                    <span className="text-sm font-bold text-rose-700">{healthCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                    <span className="text-sm font-bold text-foreground">Nearest facility</span>
+                    <span className="text-sm font-bold text-foreground">{distanceLabel(health?.nearestDistance)}</span>
+                  </div>
+                </>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-3">
               Proximity and count of GPs, clinics, hospitals and dentists from OpenStreetMap — indicative of

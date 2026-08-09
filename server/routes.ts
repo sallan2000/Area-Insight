@@ -249,10 +249,11 @@ interface ProcessElementsInput {
   broadband: any[];
   evChargers: any[];
   crimeDataUnavailable: boolean;
+  greenHealthFailed?: boolean;
 }
 
 function processElements(input: ProcessElementsInput) {
-  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable } = input;
+  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable, greenHealthFailed } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -683,14 +684,14 @@ function processElements(input: ProcessElementsInput) {
     green: (() => {
       const count = greenElements.length;
       const nearest = greenElements.length > 0 ? Math.min(...greenElements.map((g: any) => g.distance)) : null;
-      return { count, nearestDistance: nearest };
+      return { count, nearestDistance: nearest, failed: greenHealthFailed || false };
     })(),
     // Health access: descriptive context only (count + nearest GP/clinic/hospital/
     // dentist). OSM proximity, not NHS service availability or quality.
     health: (() => {
       const count = healthElements.length;
       const nearest = healthElements.length > 0 ? Math.min(...healthElements.map((h: any) => h.distance)) : null;
-      return { count, nearestDistance: nearest };
+      return { count, nearestDistance: nearest, failed: greenHealthFailed || false };
     })(),
     transport: {
       trainDistance: minTrainDist,
@@ -875,16 +876,16 @@ async function fetchAreaMetrics(postcode: string) {
   // mirror race; if one fully fails we still keep the other's elements so a single
   // slow query can't blank every OSM pillar. Only treat Overpass as failed when
   // BOTH return empty (genuinely feature-free area or all mirrors down).
-  const runQuery = async (query: string): Promise<any[]> => {
+  const runQuery = async (query: string, retries = 0): Promise<any[]> => {
     const tryMirror = async (endpoint: string): Promise<any[]> => {
-      const res = await fetch(endpoint, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
         body: `data=${encodeURIComponent(query)}`,
         signal: AbortSignal.timeout(35000)
       });
-      if (!res.ok) throw new Error(`Overpass (${endpoint}): HTTP ${res.status}`);
-      const data = await res.json();
+      if (!response.ok) throw new Error(`Overpass (${endpoint}): HTTP ${response.status}`);
+      const data = await response.json();
       // Overpass remark when query is cut short: "runtime error: Query run time limit exceeded."
       if (data.remark && (
         data.remark.includes("exceeded") ||
@@ -903,19 +904,34 @@ async function fetchAreaMetrics(postcode: string) {
       }
       return els;
     };
-    return Promise.any(
-      overpassEndpoints.map(ep =>
-        tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
-      )
-    ).catch(() => []);
+    try {
+      return await Promise.any(
+        overpassEndpoints.map(ep =>
+          tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
+        )
+      );
+    } catch (e) {
+      // One retry on the green query (it's the slower, more failure-prone half for
+      // Scotland/NI where Overpass is busier). Re-shuffle mirror order to prefer a
+      // different mirror first.
+      if (retries <= 0) throw e;
+      console.warn(`Overpass query failed all mirrors — retrying once`);
+      return runQuery(query, retries - 1).catch(() => []);
+    }
   };
 
-  const fetchFromOverpass = async (): Promise<any[]> => {
+  const fetchFromOverpass = async (): Promise<{ elements: any[]; greenFailed: boolean; coreFailed: boolean }> => {
     const tOverpass = Date.now();
-    const [core, green] = await Promise.all([runQuery(overpassQueryCore), runQuery(overpassQueryGreen)]);
+    // Green query is the slower/failure-prone half (health + green tags, large radius).
+    // Give it a retry so a transient Overpass timeout doesn't silently zero out
+    // green space + health for an area that genuinely has them.
+    const [core, green] = await Promise.all([
+      runQuery(overpassQueryCore),
+      runQuery(overpassQueryGreen, 1),
+    ]);
     const merged = [...core, ...green];
     console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (core ${core.length} + green ${green.length} = ${merged.length} elements)`);
-    return merged;
+    return { elements: merged, coreFailed: core.length === 0, greenFailed: green.length === 0 };
   };
 
   // 2b. Crime — monthly fetches and neighbourhood lookup run concurrently.
@@ -1272,7 +1288,7 @@ async function fetchAreaMetrics(postcode: string) {
     broadband,
     evChargers
   ] = await Promise.all([
-    fetchFromOverpass().catch((e: any) => { console.error("Overpass failed:", e.message); return []; }),
+    fetchFromOverpass().catch((e: any) => { console.error("Overpass failed:", e.message); return { elements: [], greenFailed: true, coreFailed: true }; }),
     fetchCrimeData(),
     fetchNearest(),
     getAirQualityFromDefra(),
@@ -1283,7 +1299,12 @@ async function fetchAreaMetrics(postcode: string) {
   ]);
   console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
 
+  // `overpassFailed` (both queries empty) means genuinely no OSM data at all.
+  // A *green-only* failure (common for Scotland/NI where Overpass is busier) must
+  // also be treated as partial so the row is never cached as "fresh" with silently
+  // zeroed green space + health. See processElements usage of greenFailed below.
   const overpassFailed = elements.length === 0;
+  const greenHealthFailed = greenFailed;
   const airQualityEstimated = prefetchedAirQuality === null;
 
   // 4. Post-parallel processing
@@ -1364,7 +1385,7 @@ async function fetchAreaMetrics(postcode: string) {
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
     prefetchedAirQuality, floodRisk, mobile, broadband, evChargers,
-    crimeDataUnavailable
+    crimeDataUnavailable, greenHealthFailed
   });
 }
 
@@ -1629,7 +1650,7 @@ export async function registerRoutes(
 
       const data = await fetchAreaMetrics(cleanPostcode);
       const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
-      const partialData = data.overpassFailed || false;
+      const partialData = data.overpassFailed || (data.green && data.green.failed) || (data.health && data.health.failed) || false;
       const assessment = await storage.createAssessment({
         postcode: cleanPostcode,
         lat: data.lat,
@@ -1677,7 +1698,7 @@ export async function registerRoutes(
 
       const data = await fetchAreaMetrics(existing.postcode);
       const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
-      const partialData = data.overpassFailed || false;
+      const partialData = data.overpassFailed || (data.green && data.green.failed) || (data.health && data.health.failed) || false;
       const updated = await storage.createAssessment({
         postcode: existing.postcode,
         lat: data.lat,
@@ -1856,7 +1877,7 @@ export async function registerRoutes(
         try {
           const data = await fetchAreaMetrics(assessment.postcode);
           const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
-          const partialData = data.overpassFailed || false;
+          const partialData = data.overpassFailed || (data.green && data.green.failed) || (data.health && data.health.failed) || false;
           await storage.createAssessment(
             {
               postcode: assessment.postcode,

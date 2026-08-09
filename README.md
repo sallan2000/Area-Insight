@@ -184,8 +184,14 @@ re-run or tweaked without re-fetching external data.
 - Results cached in PostgreSQL keyed by postcode.
 - A cached result is served without re-fetching if **fresh**:
   - normal assessment: created within the last **90 days**
-  - partial assessment (Overpass failed): searched within the last **1 day**
-- Otherwise the service re-fetches everything and overwrites the row.
+  - otherwise the service re-fetches everything and overwrites the row.
+- **Partial assessments are never served stale.** A row flagged `partialData`
+  (Overpass/OSM blipped during the original computation, so transport/schools/
+  amenities were computed from empty data) is treated as **never fresh** — every
+  retest recomputes it. This prevents a one-off upstream outage from permanently
+  sticking a postcode with empty pillars. (Previously partial rows were re-served
+  within a 1-day window; that was the bug that made some Scottish postcodes look
+  like they had no data even though the DB showed a partial row.)
 - Signed-in users can **refresh** (`POST /api/assess/token/:token/refresh`),
   subject to a **1-hour cooldown** (`REFRESH_COOLDOWN_MS`), and only when signed in.
 
@@ -231,8 +237,16 @@ failed and transport/schools/amenities are degraded.
 | `ADMIN_SECRET` | Admin endpoints | Admin routes return 403. |
 | `PORT` | Listen port | Defaults to `5000`. |
 
-Seeded reference data (council-tax bands, Scottish crime) ships in
-`server/data/*.json` and loads at startup — no env var needed.
+Reference data in `server/data/*.json` loads at startup — no env var needed.
+Note the split between **committed** and **git-ignored, synced** files:
+
+- **Committed / bundled:** council-tax bands, `imd-england.json`,
+  `scotland-simd-rank.json` (validation ground truth).
+- **Git-ignored / generated (NOT committed):** `schools.json` (England schools +
+  Ofsted ratings) and `scotland-datazone-crime.json` (Scottish SIMD crime proxy).
+  These are regenerated on Replit via `scripts/refresh-data.sh` — see
+  *Data freshness & auto-refresh (Replit)* below. They must be present on the host
+  or the server falls back (neutral-80 school nudge / N/A Scottish safety).
 
 ## Running locally
 
@@ -265,6 +279,30 @@ npm run build && npm start
 - `npm run check` runs `tsc` for type-checking.
 - A detailed Replit→self-host migration plan lives in **`RESUME.md`** (intentionally
   not committed to GitHub).
+
+## Data freshness & auto-refresh (Replit)
+
+The two synced datasets (`schools.json`, `scotland-datazone-crime.json`) are
+**git-ignored** and consumed from the host's local filesystem, so they are never
+shipped via git — they must be (re)generated wherever the app runs. On Replit this
+is wired in two places:
+
+1. **On every deploy / code pull.** `.replit`'s `[postMerge]` hook runs
+   `scripts/post-merge.sh`, which now calls `scripts/refresh-data.sh` after
+   `npm install` + `db:push`. So the data is rebuilt automatically whenever Replit
+   pulls new code — it is never stale on boot.
+2. **Weekly Scheduled Deployment.** Set up a Replit *Scheduled Deployment*
+   (Deployments → Scheduled) whose command is `bash scripts/refresh-data.sh` on a
+   weekly cron (e.g. `0 6 * * 1`, Mon 06:00). This catches upstream Ofsted/SIMD
+   updates that land between deploys. The Scheduled Deployment is configured in the
+   Replit UI — it is **not** set from this repo.
+
+`scripts/refresh-data.sh` is **non-fatal per sync** (a transient upstream blip
+warns but does not break the run) and has a **freshness guard**: each sync is
+skipped if its output already exists and is newer than `MAX_AGE_DAYS` (default 6),
+so scheduled runs don't hammer Ofsted/SIMD redundantly. `FORCE=1` forces a refresh.
+Env overrides: `OFSTED_CSV_URL` (the Ofsted CSV is date-stamped — bump it when
+GOV.UK publishes a newer month) and `GEOCODE=0` to skip postcode geocoding.
 
 ## Authentication
 

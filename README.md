@@ -191,14 +191,16 @@ total = transport * 0.25
 - **Amenities** blends count, category diversity, top-rated count, and supermarket
   proximity.
 - **Green Space & Health Access** — shown as a supplementary section (alongside
-  Air Quality, Flood, Broadband and Mobile), *not* one of the four scored pillars.
-  Two OSM-derived liveability signals for all UK nations:
-  - *Green space*: count + proximity of parks, gardens, playgrounds, pitches, commons,
-    nature reserves and natural woodland/grass within 1.5 km.
-  - *Health access*: proximity + count of GPs, clinics, hospitals and dentists
-    (OpenStreetMap only — indicative of provision, not NHS service availability).
-  Each shows its own sub-score; they inform the reader but are excluded from the
-  headline composite (kept consistent with the other supplementary sections).
+  Air Quality, Flood, Broadband and Mobile), *not* one of the four scored pillars
+  and *not given a synthetic score*. Two OSM-derived signals for all UK nations:
+  - *Green space*: number of green areas (parks, gardens, playgrounds, commons,
+    nature reserves, woodland, public greens) within 1.5 km, plus distance to the
+    nearest — counted as map **areas only** (not POI nodes), with noisy tags
+    (`natural=grass/scrub/heath`, sports pitches) excluded.
+  - *Health access*: number of GPs, clinics, hospitals and dentists within 3 km,
+    plus distance to the nearest.
+  Both are reported as plain context. Raw OSM element counts track tagging density
+  rather than real greenness, so scoring them would be misleading — hence no 0–100.
 
 **Composite weights (four core pillars):** Transport 25%, Safety 35%,
 Amenities 20%, Schools 20%.

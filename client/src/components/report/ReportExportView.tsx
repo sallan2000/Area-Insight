@@ -41,7 +41,7 @@ function ExportScoreRing({ score, size = 80 }: { score: number; size?: number })
   );
 }
 
-function SectionHeading({ Icon, title, score, unavailable }: { Icon: any; title: string; score: number; unavailable?: boolean }) {
+function SectionHeading({ Icon, title, score, unavailable }: { Icon: any; title: string; score?: number | null; unavailable?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid #f3f4f6" }}>
       <div style={{ background: "#eff6ff", borderRadius: 8, padding: 7, display: "flex" }}>
@@ -49,15 +49,15 @@ function SectionHeading({ Icon, title, score, unavailable }: { Icon: any; title:
       </div>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>{title}</div>
-        {unavailable ? (
-          <div style={{ fontSize: 11, color: "#9ca3af" }}>Not scored — data unavailable</div>
-        ) : (
+        {score != null ? (
           <div style={{ fontSize: 11, color: "#6b7280" }}>
             Score: <strong style={{ color: scoreHex(score) }}>{score}/100</strong> — {scoreLabel(score)}
           </div>
+        ) : (
+          <div style={{ fontSize: 11, color: "#9ca3af" }}>Informational — not scored</div>
         )}
       </div>
-      {!unavailable && <ExportScoreRing score={score} size={52} />}
+      {score != null && <ExportScoreRing score={score} size={52} />}
     </div>
   );
 }
@@ -267,7 +267,7 @@ export function ReportExportView({ report, scores, raw, overallScore, safetyBrea
 
       {/* ── Green & Health ── */}
       <div style={{ marginBottom: 24 }}>
-        <SectionHeading Icon={Trees} title="Green & Health" score={Math.round(scores.greenHealth)} />
+        <SectionHeading Icon={Trees} title="Green & Health" />
         {raw.overpassFailed && <OverpassWarning />}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#166534" }}>

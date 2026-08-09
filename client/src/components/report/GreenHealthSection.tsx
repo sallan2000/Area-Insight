@@ -4,13 +4,11 @@ import { Trees, HeartPulse } from "lucide-react";
 interface GreenSpace {
   count?: number;
   nearestDistance?: number | null;
-  score?: number;
 }
 
 interface HealthAccess {
   count?: number;
   nearestDistance?: number | null;
-  score?: number;
 }
 
 interface GreenHealthSectionProps {
@@ -19,19 +17,15 @@ interface GreenHealthSectionProps {
   overpassFailed?: boolean;
 }
 
-function scoreBand(score: number | undefined): { label: string; cls: string } {
-  if (score == null) return { label: "—", cls: "bg-gray-100 text-gray-500" };
-  if (score >= 80) return { label: "Excellent", cls: "bg-emerald-100 text-emerald-700" };
-  if (score >= 60) return { label: "Good", cls: "bg-blue-100 text-blue-700" };
-  if (score >= 40) return { label: "Average", cls: "bg-amber-100 text-amber-700" };
-  return { label: "Limited", cls: "bg-red-100 text-red-700" };
+function distanceLabel(km: number | undefined | null): string {
+  if (km == null) return "no nearby feature found";
+  if (km < 1) return `${Math.round(km * 1000)} m away`;
+  return `${km.toFixed(1)} km away`;
 }
 
 export function GreenHealthSection({ green, health, overpassFailed }: GreenHealthSectionProps) {
   const greenCount = green?.count ?? 0;
   const healthCount = health?.count ?? 0;
-  const greenBand = scoreBand(green?.score);
-  const healthBand = scoreBand(health?.score);
 
   return (
     <section className="space-y-6">
@@ -52,22 +46,22 @@ export function GreenHealthSection({ green, health, overpassFailed }: GreenHealt
               </div>
               <div>
                 <h4 className="font-bold">Green Space</h4>
-                <p className="text-sm text-muted-foreground">Parks, gardens, nature &amp; woodland nearby</p>
+                <p className="text-sm text-muted-foreground">Parks, gardens &amp; woodland nearby</p>
               </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border mb-3">
-              <div>
-                <p className="text-sm font-bold text-foreground">{greenCount} green spaces</p>
-                <p className="text-xs text-muted-foreground">
-                  {green?.nearestDistance != null
-                    ? `Nearest ${green.nearestDistance.toFixed(2)} km away`
-                    : "Within 1.5 km"}
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                <span className="text-sm font-bold text-foreground">Green areas within 1.5 km</span>
+                <span className="text-sm font-bold text-green-700">{greenCount}</span>
               </div>
-              <span className={`text-xs font-bold px-2 py-1 rounded-md ${greenBand.cls}`}>{greenBand.label}</span>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                <span className="text-sm font-bold text-foreground">Nearest green space</span>
+                <span className="text-sm font-bold text-foreground">{distanceLabel(green?.nearestDistance)}</span>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Count and proximity of parks, gardens, playgrounds, pitches, commons, nature reserves and natural woodland or grassland within 1.5 km.
+            <p className="text-xs text-muted-foreground mt-3">
+              Counts parks, gardens, playgrounds, commons, nature reserves, woodland and public greens
+              (OpenStreetMap areas). Informational only — not a scored component.
             </p>
           </CardContent>
         </Card>
@@ -84,19 +78,19 @@ export function GreenHealthSection({ green, health, overpassFailed }: GreenHealt
                 <p className="text-sm text-muted-foreground">GPs, clinics, hospitals &amp; dentists nearby</p>
               </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border mb-3">
-              <div>
-                <p className="text-sm font-bold text-foreground">{healthCount} nearby</p>
-                <p className="text-xs text-muted-foreground">
-                  {health?.nearestDistance != null
-                    ? `Nearest ${health.nearestDistance.toFixed(2)} km away`
-                    : "Within 3 km"}
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                <span className="text-sm font-bold text-foreground">Facilities within 3 km</span>
+                <span className="text-sm font-bold text-rose-700">{healthCount}</span>
               </div>
-              <span className={`text-xs font-bold px-2 py-1 rounded-md ${healthBand.cls}`}>{healthBand.label}</span>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-border">
+                <span className="text-sm font-bold text-foreground">Nearest facility</span>
+                <span className="text-sm font-bold text-foreground">{distanceLabel(health?.nearestDistance)}</span>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Proximity and count of GPs, clinics, hospitals and dentists from OpenStreetMap — indicative of provision, not NHS service availability or waiting times.
+            <p className="text-xs text-muted-foreground mt-3">
+              Proximity and count of GPs, clinics, hospitals and dentists from OpenStreetMap — indicative of
+              provision, not NHS service availability or waiting times.
             </p>
           </CardContent>
         </Card>

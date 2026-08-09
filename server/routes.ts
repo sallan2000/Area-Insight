@@ -204,12 +204,19 @@ function processElements(input: ProcessElementsInput) {
   const localAmenitiesElements = elementsWithDistance.filter((e: any) => e.tags?.amenity && !["school", "college", "university", "bus_stop", "pharmacy", "post_office"].includes(e.tags.amenity));
   const essentialAmenitiesElements = elementsWithDistance.filter((e: any) => ["pharmacy", "post_office"].includes(e.tags?.amenity));
 
-  // Green space: parks, gardens, playgrounds, pitches, commons, nature reserves,
-  // and natural woodland/grass/heath within 1.5km. All UK nations (OSM).
-  const greenElements = elementsWithDistance.filter((e: any) =>
-    (e.tags?.leisure && ["park", "garden", "playground", "pitch", "common", "nature_reserve", "recreation_ground", "dog_park"].includes(e.tags.leisure)) ||
-    (e.tags?.natural && ["wood", "grass", "heath", "scrub", "wetland"].includes(e.tags.natural))
-  );
+  // Green space: parks, gardens, playgrounds, commons, nature reserves, woodland and
+  // public greens (landuse). Count AREAS only (way/relation) — node POIs (park
+  // entrances, benches) and noisy natural=grass/scrub/heath tags are excluded, since
+  // raw OSM element counts are dominated by tagging density, not real greenness.
+  const GREEN_AREA_TAGS = new Set(["park", "garden", "playground", "common", "nature_reserve", "dog_park", "forest"]);
+  const GREEN_LANDUSE = new Set(["forest", "recreation_ground", "grass", "village_green", "meadow"]);
+  const greenElements = elementsWithDistance.filter((e: any) => {
+    if (e.type === "node") return false; // areas only
+    if (e.tags?.leisure && GREEN_AREA_TAGS.has(e.tags.leisure)) return true;
+    if (e.tags?.landuse && GREEN_LANDUSE.has(e.tags.landuse)) return true;
+    if (e.tags?.natural && ["wood", "wetland", "forest"].includes(e.tags.natural)) return true;
+    return false;
+  });
   // Health access: GPs, hospitals, clinics, dentists (OSM). Proximity matters most.
   const healthElements = elementsWithDistance.filter((e: any) =>
     e.tags?.amenity && ["doctors", "hospital", "clinic", "dentist"].includes(e.tags.amenity)
@@ -606,29 +613,20 @@ function processElements(input: ProcessElementsInput) {
       vehicle: vehicleCrimes,
       drugs: drugCrimes
     },
-    // Green space: reward both count (more choice of outdoor space) and proximity
-    // (nearest green space within easy walking distance). Saturating curves.
+    // Green space: reported as descriptive context (count of green areas within
+    // 1.5km + distance to the nearest), NOT a synthetic 0-100. Raw OSM element counts
+    // track tagging density rather than real greenness, so scoring them is misleading.
     green: (() => {
       const count = greenElements.length;
       const nearest = greenElements.length > 0 ? Math.min(...greenElements.map((g: any) => g.distance)) : null;
-      const countScore = Math.min(100, Math.round((1 - Math.exp(-count / 6)) * 100));
-      // nearest within 400m -> full marks; beyond 1.5km -> ~0
-      const proxScore = nearest != null ? Math.round(Math.max(0, 100 * (1 - Math.min(1, nearest / 1.5)))) : 0;
-      const score = Math.round(countScore * 0.6 + proxScore * 0.4);
-      return { count, nearestDistance: nearest, score };
+      return { count, nearestDistance: nearest };
     })(),
-    // Health access: proximity to nearest GP/clinic/hospital/dentist dominates;
-    // having at least one nearby is the core signal. OSM only (no NHS grades).
+    // Health access: descriptive context only (count + nearest GP/clinic/hospital/
+    // dentist). OSM proximity, not NHS service availability or quality.
     health: (() => {
       const count = healthElements.length;
       const nearest = healthElements.length > 0 ? Math.min(...healthElements.map((h: any) => h.distance)) : null;
-      // nearest within 800m -> strong; within 3km -> moderate; beyond -> low
-      const proxScore = nearest != null
-        ? Math.round(Math.max(0, 100 * (1 - Math.min(1, nearest / 3))))
-        : 0;
-      const countScore = Math.min(100, Math.round((1 - Math.exp(-count / 4)) * 100));
-      const score = Math.round(proxScore * 0.7 + countScore * 0.3);
-      return { count, nearestDistance: nearest, score };
+      return { count, nearestDistance: nearest };
     })(),
     transport: {
       trainDistance: minTrainDist,
@@ -800,10 +798,11 @@ async function fetchAreaMetrics(postcode: string) {
     (
       node["amenity"~"doctors|hospital|clinic|dentist"](around:3000,${lat},${lng});
       way["amenity"~"doctors|hospital|clinic|dentist"](around:3000,${lat},${lng});
-      node["leisure"~"park|garden|playground|pitch|common|nature_reserve|recreation_ground|dog_park"](around:1500,${lat},${lng});
-      way["leisure"~"park|garden|playground|pitch|common|nature_reserve|recreation_ground|dog_park"](around:1500,${lat},${lng});
-      node["natural"~"wood|grass|heath|scrub|wetland"](around:1500,${lat},${lng});
-      way["natural"~"wood|grass|heath|scrub|wetland"](around:1500,${lat},${lng});
+      node["leisure"~"park|garden|playground|common|nature_reserve|dog_park|forest"](around:1500,${lat},${lng});
+      way["leisure"~"park|garden|playground|common|nature_reserve|dog_park|forest"](around:1500,${lat},${lng});
+      way["landuse"~"forest|recreation_ground|grass|village_green|meadow"](around:1500,${lat},${lng});
+      node["natural"~"wood|wetland|forest"](around:1500,${lat},${lng});
+      way["natural"~"wood|wetland|forest"](around:1500,${lat},${lng});
     );
     out body center;
   `;
@@ -1324,11 +1323,10 @@ function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
   const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.score ?? 0);
-  // Green & Health: combined 0-100 sub-score from OSM (parks/green space + GP/
-  // hospital/dentist access). Shown as a supplementary section (like Air Quality /
-  // Broadband), NOT as a core pillar, so it does not enter the headline composite.
-  const greenHealthScore = Math.round(((metrics.green?.score || 0) + (metrics.health?.score || 0)) / 2);
-  // Headline composite = the four core pillars only (restored original weighting):
+  // Green & Health are reported as descriptive context only (counts + nearest
+  // distance), not scored — raw OSM element counts track tagging density rather
+  // than real greenness/health access, so a synthetic 0-100 would be misleading.
+  // They do not enter the headline composite (the four core pillars only):
   // transport .25, safety .35, amenities .20, schools .20.
   const totalScore = (transportScoreFinal * 0.25)
     + (Math.sqrt(safetyScoreFinal) * 10 * 0.35)
@@ -1340,7 +1338,7 @@ function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
     safety: Math.round(safetyScoreFinal),
     amenities: Math.round(amenitiesScoreFinal),
     schools: Math.round(schoolsScoreFinal),
-    greenHealth: greenHealthScore,
+    greenHealth: null,
     total: Math.round(totalScore)
   };
 }

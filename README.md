@@ -147,6 +147,7 @@ lets you save a search history and *refresh* a report to pull fresh data.
 | **Resend** | Email share |
 | **Static JSON** (`server/data/`) | Council-tax bands (England/Wales LSOA, Scotland council areas); Scottish SIMD 2020v2 crime proxy (`scotland-datazone-crime.json`); ground-truth reference data for validation (`imd-england.json`, `scotland-simd-rank.json`) |
 | **England schools** | Synced via `npm run sync:schools` from Ofsted "Management information — state-funded schools — latest inspections" CSV (URN, phase, postcode, rating) → `server/data/schools.json` (postcodes.io geocodes each school to lat/lng) |
+| **Property sales** | Synced via `npm run sync:property-sales` from **HM Land Registry Price Paid Data (PPD)** — England & Wales only. Aggregated per postcode district (outcode) for the trailing 12 months → average price, sales count, most-recent sale → `server/data/property-sales.json`. Scotland (Registers of Scotland) and Northern Ireland (Land Registry NI) publish transaction-level sales data on a **paid** basis only, so they are excluded (the report shows an honest note rather than fabricated figures). |
 
 ## Scoring model (technical)
 

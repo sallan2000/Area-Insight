@@ -109,7 +109,25 @@ try {
   console.warn("schools.json not found — school scoring will fall back to a neutral 80 until `npm run sync:schools` is run.");
 }
 
-// Scottish crime proxy: SIMD 2020v2 Crime domain per Data Zone (S010xxxxx).
+// Property sales (last 12 months), aggregated per outcode from HM Land Registry PPD.
+// England & Wales only — Scotland (RoS) and NI (LRNI) charge for transaction-level data.
+type PropertySalesEntry = { avgPrice: number; salesCount: number; latestDate: string | null; latestPrice: number | null };
+type PropertySalesData = { generatedAt: string; source: string; coverage: string; note: string; windowMonths: number; cutoff: string; byOutcode: Record<string, PropertySalesEntry> };
+let propertySales: PropertySalesData | null = null;
+try {
+  const basePath = join(process.cwd(), 'server', 'data', 'property-sales.json');
+  const distPath = join(process.cwd(), 'dist', 'data', 'property-sales.json');
+  let data: string;
+  try {
+    data = readFileSync(basePath, 'utf-8');
+  } catch {
+    data = readFileSync(distPath, 'utf-8');
+  }
+  propertySales = JSON.parse(data) as PropertySalesData;
+  console.log(`Loaded property-sales for ${Object.keys(propertySales.byOutcode).length} outcodes (${propertySales.coverage}, generated ${propertySales.generatedAt.slice(0, 10)})`);
+} catch (e) {
+  console.warn("property-sales.json not found — Property Sales section will show 'data not available' until `npm run sync:property-sales` is run.");
+}
 // Resolves a Scottish postcode → Data Zone (via postcodes.io `codes.lsoa11`) →
 // crime rank, giving a real (annual, zone-level) Safety score instead of N/A.
 type ScotDzCrime = { crimeRank: number; crimeRate: number | null };
@@ -1395,6 +1413,63 @@ export async function registerRoutes(
       return res.json({ valid: true });
     } catch {
       return res.status(502).json({ valid: false, message: "Unable to verify postcode." });
+    }
+  });
+
+  app.get("/api/property-sales", async (req, res) => {
+    const raw = String(req.query.postcode || "").trim().toUpperCase();
+    if (!raw || !/^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$/.test(raw)) {
+      return res.status(422).json({ available: false, message: "Invalid UK postcode format." });
+    }
+    try {
+      const geo = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(raw)}`, { signal: AbortSignal.timeout(8000) });
+      if (!geo.ok) return res.status(404).json({ available: false, message: "Postcode not found." });
+      const geoJson = await geo.json() as any;
+      const country = geoJson?.result?.country as string | undefined;
+      const outcode = (geoJson?.result?.outcode as string | undefined) || raw.split(" ")[0];
+
+      // Scotland (RoS) and NI (LRNI) charge for transaction-level data — no free open
+      // registry. Don't fabricate; return the honest coverage note.
+      if (country === "Scotland" || country === "Northern Ireland") {
+        return res.json({
+          available: false,
+          country,
+          coverage: propertySales?.coverage ?? "England & Wales",
+          message: "Transaction-level property sales are not available from free open registries for this nation (Scotland's Registers of Scotland and Northern Ireland's Land Registry charge for this data).",
+        });
+      }
+
+      if (!propertySales) {
+        return res.json({ available: false, message: "Property sales data not loaded. Run `npm run sync:property-sales`." });
+      }
+      const entry = propertySales.byOutcode[outcode];
+      if (!entry) {
+        return res.json({
+          available: true,
+          coverage: propertySales.coverage,
+          outcode,
+          found: false,
+          message: `No recorded sales in ${outcode} in the last ${propertySales.windowMonths} months.`,
+          source: propertySales.source,
+          generatedAt: propertySales.generatedAt,
+        });
+      }
+      return res.json({
+        available: true,
+        coverage: propertySales.coverage,
+        outcode,
+        found: true,
+        avgPrice: entry.avgPrice,
+        salesCount: entry.salesCount,
+        latestDate: entry.latestDate,
+        latestPrice: entry.latestPrice,
+        windowMonths: propertySales.windowMonths,
+        source: propertySales.source,
+        generatedAt: propertySales.generatedAt,
+        note: propertySales.note,
+      });
+    } catch {
+      return res.status(502).json({ available: false, message: "Unable to look up property sales." });
     }
   });
 

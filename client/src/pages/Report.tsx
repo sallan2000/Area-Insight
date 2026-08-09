@@ -46,6 +46,7 @@ import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
 import { GreenHealthSection } from "@/components/report/GreenHealthSection";
+import { PropertySalesSection } from "@/components/report/PropertySalesSection";
 import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
@@ -66,6 +67,23 @@ export default function Report() {
   const { data: report, isLoading, error } = useAssessment(token);
   const { isAuthenticated } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [propertySales, setPropertySales] = useState<any>(null);
+  const [propertySalesLoading, setPropertySalesLoading] = useState(false);
+
+  // Fetch property sales (last 12 months) for the report's postcode district.
+  // England & Wales only (HM Land Registry PPD); Scotland/NI return a paid-data note.
+  useEffect(() => {
+    if (!report?.postcode) return;
+    let cancelled = false;
+    setPropertySalesLoading(true);
+    setPropertySales(null);
+    fetch(`/api/property-sales?postcode=${encodeURIComponent(report.postcode)}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setPropertySales(d); })
+      .catch(() => { if (!cancelled) setPropertySales({ available: false, message: "Unable to load property sales." }); })
+      .finally(() => { if (!cancelled) setPropertySalesLoading(false); });
+    return () => { cancelled = true; };
+  }, [report?.postcode]);
   const [activeTab, setActiveTab] = useState<'safety' | 'transport' | 'schools' | 'amenities' | null>(null);
 
   // Set initial active tab based on scores and crime count
@@ -909,6 +927,8 @@ export default function Report() {
           {raw.green && raw.health && (
             <GreenHealthSection green={raw.green} health={raw.health} overpassFailed={raw.overpassFailed} />
           )}
+
+          <PropertySalesSection data={propertySalesLoading ? null : propertySales} />
 
           {/* Nearest Neighbourhoods */}
           {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (

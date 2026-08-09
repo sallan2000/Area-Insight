@@ -62,4 +62,13 @@ else
   echo "[refresh-data] scotland-datazone-crime.json fresh (<${MAX_AGE_DAYS}d) — skipped"
 fi
 
+# --- Property sales (last 12 months), HM Land Registry PPD, England & Wales ---
+PROP_OUT="server/data/property-sales.json"
+if should_sync "$PROP_OUT"; then
+  echo "[refresh-data] property-sales.json stale/missing — running sync:property-sales"
+  npm run sync:property-sales || echo "[refresh-data] WARNING: sync:property-sales failed"
+else
+  echo "[refresh-data] property-sales.json fresh (<${MAX_AGE_DAYS}d) — skipped"
+fi
+
 echo "[refresh-data] done."

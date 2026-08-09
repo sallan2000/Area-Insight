@@ -21,6 +21,8 @@ import {
   ShoppingBag,
   Building2,
   RefreshCw,
+  Footprints,
+  Bike,
 } from "lucide-react";
 import { useRef, useState, useEffect, useId } from "react";
 import { setRule, removeRule } from "@/lib/dynamic-styles";
@@ -50,6 +52,24 @@ import { PropertySalesSection } from "@/components/report/PropertySalesSection";
 import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@shared/routes";
+
+// Walkability component bars (order = contribution weight to the walk score).
+function walkCompBars(c: any) {
+  return [
+    { label: "Shops & daily needs", value: c?.shop ?? 0 },
+    { label: "Public transport", value: c?.transit ?? 0 },
+    { label: "Green space", value: c?.green ?? 0 },
+    { label: "Health (GP/clinic)", value: c?.health ?? 0 },
+    { label: "Schools", value: c?.school ?? 0 },
+    { label: "Amenity variety", value: c?.amenities ?? 0 },
+  ];
+}
+// Format a distance in km as a friendly string.
+function fmtKm(km: number | null | undefined): string {
+  if (km == null) return "—";
+  if (km >= 1) return `${km.toFixed(1)} km`;
+  return `${Math.round(km * 1000)} m`;
+}
 
 
 function CrimeBar({ pct, color }: { pct: number; color: string }) {
@@ -630,6 +650,12 @@ export default function Report() {
                           {(raw.councilTax.source === "VOA (2024)" || raw.councilTax.source?.startsWith("SAA")) ? "Most common band" : "Estimated band"} for properties in <span className="font-semibold">{report.postcode}</span>: 
                           <span className="ml-1 text-foreground font-bold" data-testid="text-council-tax-band">Band {raw.councilTax.estimatedBand}</span>
                         </p>
+                        {raw.councilTax.estimatedAnnualCost != null && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Estimated <span className="font-semibold text-foreground">£{raw.councilTax.estimatedAnnualCost.toLocaleString("en-GB")}</span> per year{" "}
+                            <span className="text-[10px]">(from national avg Band D × band multiplier; actual LA charge varies)</span>
+                          </p>
+                        )}
                         <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-council-tax-source">
                           Source: {raw.councilTax.source || "Estimated"}
                         </p>
@@ -710,6 +736,53 @@ export default function Report() {
                 />
               </div>
             </div>
+
+            {raw.walkability && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="bg-white border-border shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
+                        <Footprints className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold">Walkability</h4>
+                        <p className="text-sm text-muted-foreground">Daily needs within walking distance</p>
+                      </div>
+                      <span className="ml-auto text-3xl font-bold text-emerald-700">{raw.walkability.score}<span className="text-base text-muted-foreground">/100</span></span>
+                    </div>
+                    {walkCompBars(raw.walkability.components).map((b: any) => (
+                      <div key={b.label} className="mb-2">
+                        <div className="flex justify-between text-xs font-medium mb-1"><span>{b.label}</span><span>{b.value}</span></div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5"><div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${b.value}%` }} /></div>
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-muted-foreground mt-3">Derived from OpenStreetMap — distance to shops, transit, green space, health & schools. Not an official walkability index.</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white border-border shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-cyan-50 rounded-xl text-cyan-600">
+                        <Bike className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold">Bikeability</h4>
+                        <p className="text-sm text-muted-foreground">Cycling connectivity & links</p>
+                      </div>
+                      <span className="ml-auto text-3xl font-bold text-cyan-700">{raw.walkability.bikeScore}<span className="text-base text-muted-foreground">/100</span></span>
+                    </div>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <div className="flex justify-between"><span>Nearest shop</span><span className="font-semibold text-foreground">{fmtKm(raw.walkability.nearestShopKm)}</span></div>
+                      <div className="flex justify-between"><span>Nearest green space</span><span className="font-semibold text-foreground">{fmtKm(raw.walkability.nearestGreenKm)}</span></div>
+                      <div className="flex justify-between"><span>Nearest GP / clinic</span><span className="font-semibold text-foreground">{fmtKm(raw.walkability.nearestHealthKm)}</span></div>
+                      <div className="flex justify-between"><span>Nearest school</span><span className="font-semibold text-foreground">{fmtKm(raw.walkability.nearestSchoolKm)}</span></div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-3">Based on OpenStreetMap mapped features within ~1.5 km.</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             <section className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
               <div className="p-6 border-b border-border">

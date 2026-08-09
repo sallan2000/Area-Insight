@@ -280,6 +280,16 @@ interface ProcessElementsInput {
   greenHealthFailed?: boolean;
 }
 
+// Council tax band → yearly charge estimate. There is no free per-local-authority
+// charge API, so we estimate from the national average Band D council tax
+// (England 2024/25, DCLG/VOA ≈ £2,171) × each band's statutory multiplier. The
+// actual billed amount is set by the local authority and varies — this is a
+// transparent estimate, clearly labelled as such in the UI.
+const NATIONAL_AVG_BAND_D = 2171;
+const BAND_MULTIPLIER: Record<string, number> = {
+  A: 0.667, B: 0.778, C: 0.889, D: 1.0, E: 1.222, F: 1.444, G: 1.667, H: 1.889
+};
+
 function processElements(input: ProcessElementsInput) {
   const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable, greenHealthFailed } = input;
   // Deduplicate and filter elements with distance
@@ -594,6 +604,38 @@ function processElements(input: ProcessElementsInput) {
   };
   const noiseEstimate = estimateNoise();
 
+  // Walkability / Bikeability — derived entirely from the OSM elements already
+  // fetched (no extra API). Scores 0–100 using inverse-distance-to-daily-needs:
+  // the closer the essentials (shops, transit, green, health, schools, amenities),
+  // the higher the score. Honest: it measures *proximity of mapped features*, not a
+  // validated walkability index — but it's a real, all-UK, OSM-based signal.
+  const walkSat = (d: number, k: number) => Math.round(100 * (1 - Math.exp(-d / k))); // d in km
+  const dShop = nearestSupermarketDist;
+  const dTrain = trainStationList.length > 0 ? trainStationList[0].distance : 3.0;
+  const dGreen = greenElements.length > 0 ? Math.min(...greenElements.map((g: any) => g.distance)) : 5.0;
+  const dHealth = healthElements.length > 0 ? Math.min(...healthElements.map((h: any) => h.distance)) : 5.0;
+  const dSchool = (primarySchools.length || secondarySchools.length)
+    ? Math.min(...[...primarySchools, ...secondarySchools].map((s: any) => s.distance))
+    : 5.0;
+  const compShop = walkSat(dShop, 0.8);
+  const compTransit = Math.round(0.6 * walkSat(dTrain, 1.2) + 0.4 * Math.min(100, (busStopDensity / 40) * 100));
+  const compGreen = Math.min(100, Math.round((greenElements.length > 0 ? walkSat(dGreen, 1.0) : 0) * 0.7 + Math.min(100, greenElements.length * 8)));
+  const compHealth = walkSat(dHealth, 1.0);
+  const compSchool = walkSat(dSchool, 1.5);
+  const compAmen = Math.min(100, Math.round(40 + diversityIndex * 4 + Math.min(40, amenitiesCount * 2)));
+  const walkScore = Math.round(0.30 * compShop + 0.22 * compTransit + 0.18 * compGreen + 0.12 * compHealth + 0.10 * compSchool + 0.08 * compAmen);
+  // Bikeability leans on connectivity (transit reach + amenity spread + green links).
+  const bikeScore = Math.round(0.35 * compTransit + 0.30 * compAmen + 0.20 * compGreen + 0.15 * compSchool);
+  const walkability = {
+    score: walkScore,
+    bikeScore,
+    components: { shop: compShop, transit: compTransit, green: compGreen, health: compHealth, school: compSchool, amenities: compAmen },
+    nearestShopKm: dShop,
+    nearestGreenKm: dGreen,
+    nearestHealthKm: dHealth,
+    nearestSchoolKm: dSchool
+  };
+
   // Air quality: use pre-fetched DEFRA data if available; fall back to OSM-based heuristic
   const airQuality = prefetchedAirQuality ?? (() => {
     let basePm25 = 8;
@@ -765,8 +807,15 @@ function processElements(input: ProcessElementsInput) {
     councilTax: {
       estimatedBand: councilTaxBand,
       lookupUrl: councilTaxLink,
-      source: councilTaxSource
+      source: councilTaxSource,
+      // Estimated yearly charge from the national average Band D (2024/25 England
+      // DCLG/VOA ≈ £2,171) × this band's statutory multiplier. The actual amount is
+      // set by the local authority and varies — this is a transparent estimate, not
+      // the billed figure.
+      estimatedAnnualCost: Math.round(NATIONAL_AVG_BAND_D * (BAND_MULTIPLIER[councilTaxBand] ?? 1)),
+      nationalAvgBandD: NATIONAL_AVG_BAND_D
     },
+    walkability,
     connectivity: {
       broadband: broadband,
       mobile: mobile

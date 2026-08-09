@@ -23,7 +23,8 @@ import {
   Building2,
   Zap,
   FlaskConical,
-  AlertTriangle
+  AlertTriangle,
+  Footprints
 } from "lucide-react";
 import { 
   Dialog,
@@ -411,7 +412,8 @@ export default function Compare() {
                       { name: 'Transport', key: 'transport', icon: Bus, type: 'score' },
                       { name: 'Schools', key: 'schools', icon: GraduationCap, type: 'score' },
                       { name: 'Amenities', key: 'amenities', icon: Store, type: 'score' },
-                      { name: 'Council Tax', key: 'councilTax', icon: Receipt, type: 'text', getValue: (r: any) => r?.councilTax?.estimatedBand ? `Band ${r.councilTax.estimatedBand}` : 'N/A' },
+                      { name: 'Council Tax', key: 'councilTax', icon: Receipt, type: 'text', getValue: (r: any) => r?.councilTax?.estimatedBand ? `Band ${r.councilTax.estimatedBand}${r.councilTax.estimatedAnnualCost != null ? ` · ~£${r.councilTax.estimatedAnnualCost.toLocaleString("en-GB")}/yr` : ''}` : 'N/A' },
+                      { name: 'Walkability', key: 'walkability', icon: Footprints, type: 'text', getValue: (r: any) => r?.walkability ? `Walk ${r.walkability.score}/100 · Bike ${r.walkability.bikeScore}/100` : 'N/A' },
                       { name: 'Broadband', key: 'broadband', icon: Wifi, type: 'text', getValue: getConnectivityValue },
                       { name: 'Mobile Coverage', key: 'mobile', icon: Signal, type: 'text', getValue: (r: any) => {
                         const m = r?.connectivity?.mobile;

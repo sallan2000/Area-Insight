@@ -1,4 +1,4 @@
-import { Shield, Bus, GraduationCap, Store, ShoppingCart, ShoppingBag, Building2, Trees, AlertTriangle } from "lucide-react";
+import { Shield, Bus, GraduationCap, Store, ShoppingCart, ShoppingBag, Building2, Trees, AlertTriangle, Footprints } from "lucide-react";
 
 const BAR_COLORS: Record<string, string> = {
   "bg-red-500": "#ef4444",
@@ -268,6 +268,28 @@ export function ReportExportView({ report, scores, raw, overallScore, safetyBrea
           ))}
         </div>
       </div>
+
+      {/* ── Walkability & Bikeability ── */}
+      {raw.walkability && (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeading Icon={Footprints} title="Walkability & Bikeability" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#065f46" }}>
+              <strong>Walkability {raw.walkability.score}/100</strong> — daily needs within walking distance.
+            </div>
+            <div style={{ background: "#ecfeff", border: "1px solid #a5f3fc", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#155e75" }}>
+              <strong>Bikeability {raw.walkability.bikeScore}/100</strong> — cycling connectivity & links.
+            </div>
+            <div style={{ fontSize: 11, color: "#374151", gridColumn: "1 / -1" }}>
+              Nearest: shop {raw.walkability.nearestShopKm != null ? `${raw.walkability.nearestShopKm.toFixed(2)} km` : "—"},
+              green {raw.walkability.nearestGreenKm != null ? `${raw.walkability.nearestGreenKm.toFixed(2)} km` : "—"},
+              GP/clinic {raw.walkability.nearestHealthKm != null ? `${raw.walkability.nearestHealthKm.toFixed(2)} km` : "—"},
+              school {raw.walkability.nearestSchoolKm != null ? `${raw.walkability.nearestSchoolKm.toFixed(2)} km` : "—"}.
+              Derived from OpenStreetMap.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Green & Health ── */}
       <div style={{ marginBottom: 24 }}>

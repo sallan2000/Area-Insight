@@ -71,4 +71,13 @@ else
   echo "[refresh-data] property-sales.json fresh (<${MAX_AGE_DAYS}d) — skipped"
 fi
 
+# --- UK HPI average prices (all nations; council-area avg for Scotland/NI) ---
+UKHPI_OUT="server/data/property-prices-ukhpi.json"
+if should_sync "$UKHPI_OUT"; then
+  echo "[refresh-data] property-prices-ukhpi.json stale/missing — running sync:property-prices-ukhpi"
+  npm run sync:property-prices-ukhpi || echo "[refresh-data] WARNING: sync:property-prices-ukhpi failed"
+else
+  echo "[refresh-data] property-prices-ukhpi.json fresh (<${MAX_AGE_DAYS}d) — skipped"
+fi
+
 echo "[refresh-data] done."

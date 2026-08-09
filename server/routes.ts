@@ -141,7 +141,40 @@ function getPropertySales(): PropertySalesData | null {
   }
   return propertySalesCache;
 }
-// Resolves a Scottish postcode → Data Zone (via postcodes.io `codes.lsoa11`) →
+
+// UK House Price Index (UKHPI) average price per geography — FREE, official, all-nations.
+// Used to show a council-area average for Scotland/NI postcodes (where PPD per-postcode
+// sales are paid-only). Keyed by ONS Area_Code (matches postcodes.io codes.council_area /
+// codes.laua). Lazily loaded on first lookup.
+type UkhpiEntry = { name: string; nation: string; avgPrice: number; date: string; annualChange: number | null };
+type UkhpiData = { generatedAt: string; source: string; fileMonth: string; note: string; byCode: Record<string, UkhpiEntry> };
+let ukhpiCache: UkhpiData | null | undefined = undefined;
+function getUkhpi(): UkhpiData | null {
+  if (ukhpiCache !== undefined) return ukhpiCache;
+  try {
+    const basePath = join(process.cwd(), 'server', 'data', 'property-prices-ukhpi.json');
+    const distPath = join(process.cwd(), 'dist', 'data', 'property-prices-ukhpi.json');
+    let data: string;
+    try { data = readFileSync(basePath, 'utf-8'); }
+    catch { data = readFileSync(distPath, 'utf-8'); }
+    ukhpiCache = JSON.parse(data) as UkhpiData;
+    console.log(`Loaded UKHPI for ${Object.keys(ukhpiCache.byCode).length} geographies (file ${ukhpiCache.fileMonth})`);
+  } catch (e) {
+    console.warn("property-prices-ukhpi.json not found — S/NI council-area prices unavailable until `npm run sync:property-prices-ukhpi` is run.");
+    ukhpiCache = null;
+  }
+  return ukhpiCache;
+}
+// Try council-area code, then nation-level code, in the UKHPI map.
+function ukhpiLookup(councilAreaCode: string | undefined, nationCode: string | undefined, data: UkhpiData): UkhpiEntry | null {
+  if (councilAreaCode && data.byCode[councilAreaCode]) return data.byCode[councilAreaCode];
+  if (nationCode && data.byCode[nationCode]) return data.byCode[nationCode];
+  return null;
+}
+// Nation-level UKHPI codes (fallback when no council-area code resolves).
+const NATION_CODE: Record<string, string> = { Scotland: "S92000003", "Northern Ireland": "N92000002", England: "E92000001", Wales: "W92000004" };
+
+
 // crime rank, giving a real (annual, zone-level) Safety score instead of N/A.
 type ScotDzCrime = { crimeRank: number; crimeRate: number | null };
 let scotlandDzCrime: Record<string, ScotDzCrime> = {};
@@ -1441,15 +1474,41 @@ export async function registerRoutes(
       const country = geoJson?.result?.country as string | undefined;
       const outcode = (geoJson?.result?.outcode as string | undefined) || raw.split(" ")[0];
       const fullPc = (geoJson?.result?.postcode as string | undefined) || raw.replace(/\s+/g, " ").toUpperCase();
+      const codes = geoJson?.result?.codes || {};
+      // ONS geography codes that map to UKHPI Area_Code:
+      //   Scotland -> codes.council_area (S12xxxx); NI -> codes.laua (N09xxxx).
+      const councilAreaCode = codes.council_area || codes.laua || undefined;
 
-      // Scotland (RoS) and NI (LRNI) charge for transaction-level data — no free open
-      // registry. Don't fabricate; return the honest coverage note.
+      // Scotland (RoS) and NI (LRNI) charge for transaction-level data. We therefore
+      // cannot show a per-postcode sales LIST for free — but UKHPI (free, official)
+      // publishes a council-area AVERAGE price. Show that, clearly labelled.
       if (country === "Scotland" || country === "Northern Ireland") {
+        const ukhpi = getUkhpi();
+        const nationCode = NATION_CODE[country as string];
+        const entry = ukhpi ? ukhpiLookup(councilAreaCode, nationCode, ukhpi) : null;
+        if (entry) {
+          return res.json({
+            available: true,
+            country,
+            coverage: "United Kingdom (UK HPI)",
+            postcode: fullPc,
+            byCouncilArea: true,
+            councilArea: entry.name,
+            councilAreaCode: (councilAreaCode && ukhpi?.byCode[councilAreaCode]) ? councilAreaCode : nationCode,
+            avgPrice: entry.avgPrice,
+            date: entry.date,
+            annualChange: entry.annualChange,
+            source: ukhpi?.source,
+            generatedAt: ukhpi?.generatedAt,
+            note: "FREE, official UK House Price Index average for the council area (the finest free granularity for Scotland/Northern Ireland). Transaction-level per-postcode sales are paid-only there, so this is an area average, not a list of individual sales.",
+          });
+        }
+        // UKHPI data not loaded — honest fallback.
         return res.json({
           available: false,
           country,
-          coverage: getPropertySales()?.coverage ?? "England & Wales",
-          message: "Transaction-level property sales are not available from free open registries for this nation (Scotland's Registers of Scotland and Northern Ireland's Land Registry charge for this data).",
+          coverage: "England & Wales",
+          message: "Free council-area average price (UK HPI) is not loaded. Run `npm run sync:property-prices-ukhpi`. Transaction-level per-postcode sales are paid-only for Scotland/NI, so no free sales list exists.",
         });
       }
 

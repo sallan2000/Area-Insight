@@ -9,6 +9,9 @@ interface PropertySalesData {
   outcode?: string;
   found?: boolean;
   perPostcode?: boolean;
+  byCouncilArea?: boolean;
+  councilArea?: string;
+  councilAreaCode?: string;
   avgPrice?: number;
   salesCount?: number;
   minPrice?: number;
@@ -16,6 +19,8 @@ interface PropertySalesData {
   latestDate?: string | null;
   latestPrice?: number | null;
   sales?: PropertySale[];
+  date?: string | null;
+  annualChange?: number | null;
   windowMonths?: number;
   source?: string;
   generatedAt?: string;
@@ -57,6 +62,49 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
             Registers of Scotland and Northern Ireland's Land Registry publish transaction-level sales data on a paid basis only.
           </p>
         </div>
+      )}
+
+      {data.available && data.byCouncilArea && (
+        <Card className="bg-white border-border shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600">
+                <Home className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-bold">Average for {data.councilArea} <span className="text-indigo-600">(by council area)</span></h4>
+                <p className="text-sm text-muted-foreground">
+                  UK House Price Index · {data.country} · {fmtDate(data.date)}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">Council-area average</p>
+                <p className="text-lg font-bold text-indigo-700">{gbFormat(data.avgPrice || 0)}</p>
+              </div>
+              {data.annualChange != null && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                  <p className="text-xs text-muted-foreground">Annual change</p>
+                  <p className={`text-lg font-bold ${data.annualChange >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    {data.annualChange >= 0 ? "+" : ""}{data.annualChange}%
+                  </p>
+                </div>
+              )}
+              <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                <p className="text-xs text-muted-foreground">Granularity</p>
+                <p className="text-lg font-bold text-foreground">Council area</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-3">
+              This is the <span className="font-semibold">council-area average</span> for {data.councilArea} — the finest free granularity for
+              {" "}{data.country}. Transaction-level per-postcode sales are paid-only there, so this is an
+              area average, not a list of individual sales. Source: {data.source}.
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {data.available && data.found === false && (

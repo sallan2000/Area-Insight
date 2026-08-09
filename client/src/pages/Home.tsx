@@ -10,6 +10,7 @@ import { UserMenu } from "@/components/UserMenu";
 export default function Home() {
   const [postcode, setPostcode] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [normalizedPostcode, setNormalizedPostcode] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [location] = useLocation();
@@ -64,8 +65,9 @@ export default function Home() {
     }
 
     // Postcode is valid — show the modal and start the assessment.
-    // The modal manages its own honest progress animation (no fake completion ticks);
-    // it closes automatically when the report route loads.
+    // The modal polls /api/assess/progress/:postcode to tick each data-source
+    // search off in real time. It closes automatically when the report route loads.
+    setNormalizedPostcode(cleanPostcode);
     setShowModal(true);
 
     mutate({ postcode: cleanPostcode }, {
@@ -102,7 +104,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-blue-50/50 to-indigo-50/30 flex flex-col">
-      <LoadingModal isOpen={showModal} />
+      <LoadingModal isOpen={showModal} postcode={normalizedPostcode} />
 
       {/* Navigation */}
       <nav className="w-full max-w-7xl mx-auto px-6 py-5 flex justify-between items-center relative z-50">

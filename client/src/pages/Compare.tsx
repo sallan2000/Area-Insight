@@ -57,7 +57,6 @@ export default function Compare() {
   const [ids, setIds] = useState<{id1?: string, id2?: string}>({});
   const [isCreating, setIsCreating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
-  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
   const normalisePostcode = (pc: string) => pc.replace(/\s+/g, "").toUpperCase();
   const samePostcode =
@@ -145,15 +144,7 @@ export default function Compare() {
     }
 
     setIds({});
-    setCompletedSteps([]);
     setIsCreating(true);
-
-    const steps = ["transport", "safety", "schools", "amenities"];
-    steps.forEach((step, index) => {
-      setTimeout(() => {
-        setCompletedSteps(prev => [...prev, step]);
-      }, (index + 1) * 1200);
-    });
 
     try {
       const [res1, res2] = await Promise.all([
@@ -287,7 +278,7 @@ export default function Compare() {
           </div>
         </DialogContent>
       </Dialog>
-      <LoadingModal isOpen={isCreating} completedSteps={completedSteps} />
+      <LoadingModal isOpen={isCreating} />
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">

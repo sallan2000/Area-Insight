@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Lightbulb, MapPin, Shield, GraduationCap, Train, Leaf } from "lucide-react";
+import { Loader2, Check, AlertTriangle, Lightbulb, MapPin, Shield, Train, Leaf, Wind, Droplets, Smartphone, Wifi, PlugZap, Map } from "lucide-react";
 
 interface LoadingModalProps {
   isOpen: boolean;
-  completedSteps?: string[]; // retained for backwards-compat; not used for fake ticks
+  postcode?: string; // normalized postcode used to poll /api/assess/progress/:postcode
 }
 
 // Honest, genuinely true UK-area trivia (light, non-statistical claims to avoid
@@ -22,88 +22,104 @@ const UK_FACTS = [
   "Wales has more castles per square mile than anywhere else in Europe.",
 ];
 
-// The real phases fetchAreaMetrics moves through (in rough order). We surface the
-// current one as "in progress" — we never claim a phase is done until the report
-// actually loads (the modal closes on navigation), so nothing is falsely ticked.
-const PHASES = [
+// The individual data-source searches the server runs in parallel. The modal
+// polls /api/assess/progress/:postcode and ticks each one off in REAL TIME as
+// the server finishes it (status: 'done' | 'error' | 'pending'). No fabricated
+// timeline — a tick only appears once the server reports completion.
+type PhaseStatus = 'pending' | 'done' | 'error';
+const PHASES: { key: string; label: string; icon: any }[] = [
   { key: "geocode", label: "Locating the postcode", icon: MapPin },
-  { key: "safety", label: "Checking crime data", icon: Shield },
-  { key: "schools", label: "Finding nearby schools", icon: GraduationCap },
-  { key: "transport", label: "Mapping transport links", icon: Train },
-  { key: "amenities", label: "Surveying local amenities", icon: MapPin },
-  { key: "environment", label: "Assessing green space & air quality", icon: Leaf },
+  { key: "overpass", label: "Transport, green space & amenities", icon: Train },
+  { key: "crime", label: "Crime data (police.uk / SIMD)", icon: Shield },
+  { key: "air", label: "Air quality", icon: Wind },
+  { key: "flood", label: "Flood risk", icon: Droplets },
+  { key: "mobile", label: "Mobile coverage", icon: Smartphone },
+  { key: "broadband", label: "Broadband availability", icon: Wifi },
+  { key: "ev", label: "EV charging points", icon: PlugZap },
+  { key: "nearby", label: "Nearby neighbourhoods", icon: Map },
 ];
 
-export function LoadingModal({ isOpen }: LoadingModalProps) {
-  const [phaseIdx, setPhaseIdx] = useState(0);
+export function LoadingModal({ isOpen, postcode }: LoadingModalProps) {
+  const [progress, setProgress] = useState<Record<string, PhaseStatus>>({});
   const [factIdx, setFactIdx] = useState(0);
 
+  // Poll the server's live progress while the modal is open.
   useEffect(() => {
-    if (!isOpen) {
-      setPhaseIdx(0);
+    if (!isOpen || !postcode) {
+      setProgress({});
       setFactIdx(0);
       return;
     }
-    // Cycle the "currently working on" phase roughly every 3.5s, capping at the
-    // last phase so it doesn't wrap past a sensible point while we wait.
-    const phaseTimer = setInterval(() => {
-      setPhaseIdx((i) => Math.min(i + 1, PHASES.length - 1));
-    }, 3500);
-    // Rotate the fun fact every 4.5s.
-    const factTimer = setInterval(() => {
-      setFactIdx((i) => (i + 1) % UK_FACTS.length);
-    }, 4500);
+    let cancelled = false;
+    // The server keys progress by postcode.toUpperCase() (preserving any space,
+    // e.g. "DG11 2AR"), so match that exactly — do NOT strip spaces.
+    const key = postcode.toUpperCase();
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/assess/progress/${encodeURIComponent(key)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.phase) setProgress(data.phase);
+        }
+      } catch {
+        /* transient — next poll will catch up */
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 500);
+    const factTimer = setInterval(() => setFactIdx((i) => (i + 1) % UK_FACTS.length), 4500);
     return () => {
-      clearInterval(phaseTimer);
+      cancelled = true;
+      clearInterval(timer);
       clearInterval(factTimer);
     };
-  }, [isOpen]);
+  }, [isOpen, postcode]);
 
-  const active = PHASES[phaseIdx];
-  const ActiveIcon = active.icon;
+  const doneCount = PHASES.filter((p) => progress[p.key] === "done").length;
+  const errCount = PHASES.filter((p) => progress[p.key] === "error").length;
+  const pct = Math.round(((doneCount + errCount) / PHASES.length) * 100);
 
   return (
     <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-[460px] outline-none" onPointerDownOutside={(e) => e.preventDefault()}>
+      <DialogContent className="sm:max-w-[480px] outline-none" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-center font-display text-2xl">Analysing Area</DialogTitle>
         </DialogHeader>
 
         <div className="py-6 space-y-6">
-          {/* Indeterminate progress bar */}
+          {/* Real progress bar — fills as searches complete */}
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/15">
-            <div className="h-full w-1/3 animate-[loadingbar_1.4s_ease-in-out_infinite] rounded-full bg-primary" />
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+              style={{ width: `${pct}%` }}
+            />
           </div>
 
-          {/* Current activity */}
-          <div className="flex items-center justify-center gap-3 text-foreground">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-              <ActiveIcon className="h-4 w-4 text-primary" />
-            </div>
-            <span className="text-sm font-medium">{active.label}…</span>
-            <Loader2 className="h-4 w-4 animate-spin text-primary/70" />
-          </div>
-
-          {/* Phase checklist — honest: the active phase pulses, the rest are pending.
-              Nothing is falsely marked complete (the modal closes when the report loads). */}
-          <div className="grid grid-cols-2 gap-2">
-            {PHASES.map((p, i) => {
+          {/* Live checklist — ticked from real server progress */}
+          <div className="grid grid-cols-1 gap-1.5">
+            {PHASES.map((p) => {
               const Icon = p.icon;
-              const isActive = i === phaseIdx;
-              const isPending = i > phaseIdx;
+              const status = progress[p.key] || "pending";
               return (
                 <div
                   key={p.key}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${
-                    isActive
-                      ? "border-primary/40 bg-primary/5 text-foreground"
-                      : isPending
-                        ? "border-border bg-gray-50 text-muted-foreground"
+                  className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                    status === "done"
+                      ? "border-green-200 bg-green-50 text-green-800"
+                      : status === "error"
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
                         : "border-border bg-gray-50 text-muted-foreground"
                   }`}
                 >
-                  <Icon className={`h-3.5 w-3.5 ${isActive ? "text-primary animate-pulse" : "text-muted-foreground/60"}`} />
+                  {status === "done" ? (
+                    <Check className="h-4 w-4 shrink-0 text-green-600" />
+                  ) : status === "error" ? (
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                  ) : (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary/60" />
+                  )}
                   <span className="truncate">{p.label}</span>
+                  {status === "error" && <span className="ml-auto text-[11px] font-medium">retrying / unavailable</span>}
                 </div>
               );
             })}
@@ -121,7 +137,9 @@ export function LoadingModal({ isOpen }: LoadingModalProps) {
           </div>
 
           <p className="text-center text-xs text-muted-foreground">
-            Crunching live UK Open Data — this usually takes 15–30 seconds for a full area profile.
+            {errCount > 0
+              ? `Crunching live UK Open Data — ${doneCount}/${PHASES.length} searches done (${errCount} hit a slow source but we'll still build your report).`
+              : `Crunching live UK Open Data — ${doneCount}/${PHASES.length} searches complete.`}
           </p>
         </div>
       </DialogContent>

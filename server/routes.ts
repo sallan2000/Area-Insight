@@ -806,18 +806,57 @@ function processElements(input: ProcessElementsInput) {
   };
 }
 
+// --- Live progress store for the "Analysing Area" dialog ---
+// Keyed by normalized postcode. Each parallel data source in fetchAreaMetrics
+// reports its completion here so the client can tick searches off in REAL TIME
+// (not a fabricated timeline). Ephemeral in-memory; entries auto-expire.
+export type ProgressPhase = 'pending' | 'done' | 'error';
+interface ProgressState {
+  phase: Record<string, ProgressPhase>;
+  startedAt: number;
+  cleanup?: NodeJS.Timeout;
+}
+const assessProgress = new Map<string, ProgressState>();
+
+const ASSESS_PHASES = [
+  'geocode', 'crime', 'overpass', 'air', 'flood', 'mobile', 'broadband', 'ev', 'nearby',
+] as const;
+type AssessPhase = typeof ASSESS_PHASES[number];
+
+function initProgress(postcode: string): ProgressState {
+  const key = postcode.toUpperCase();
+  const existing = assessProgress.get(key);
+  if (existing) return existing;
+  const state: ProgressState = {
+    phase: Object.fromEntries(ASSESS_PHASES.map((p) => [p, 'pending'])) as Record<AssessPhase, ProgressPhase>,
+    startedAt: Date.now(),
+  };
+  state.cleanup = setTimeout(() => assessProgress.delete(key), 5 * 60 * 1000); // 5 min
+  assessProgress.set(key, state);
+  return state;
+}
+
+function setPhase(postcode: string, phase: AssessPhase, status: ProgressPhase) {
+  const key = postcode.toUpperCase();
+  const state = assessProgress.get(key) || initProgress(key);
+  state.phase[phase] = status;
+}
+
 // Helper function to fetch external data
 async function fetchAreaMetrics(postcode: string) {
   const t0 = Date.now();
+  initProgress(postcode); // start ticking the "Analysing Area" dialog
 
   // 1. Geocode first — everything else depends on lat/lng
   const geoRes = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
   if (!geoRes.ok) {
     const errorBody = await geoRes.text();
     console.error(`Postcodes.io error for ${postcode}: ${geoRes.status}`, errorBody);
+    setPhase(postcode, 'geocode', 'error');
     throw new Error("Invalid postcode");
   }
   const geoData = await geoRes.json();
+  setPhase(postcode, 'geocode', 'done');
   console.log(`[timing] geocode phase: ${Date.now() - t0}ms`);
 
   const lat = geoData.result.latitude;
@@ -1288,14 +1327,30 @@ async function fetchAreaMetrics(postcode: string) {
     broadband,
     evChargers
   ] = await Promise.all([
-    fetchFromOverpass().catch((e: any) => { console.error("Overpass failed:", e.message); return { elements: [], greenFailed: true, coreFailed: true }; }),
-    fetchCrimeData(),
-    fetchNearest(),
-    getAirQualityFromDefra(),
-    getFloodRisk(),
-    getMobileCoverage(),
-    getBroadbandAvailability(),
+    fetchFromOverpass()
+      .then((r) => { setPhase(postcode, 'overpass', 'done'); return r; })
+      .catch((e: any) => { console.error("Overpass failed:", e.message); setPhase(postcode, 'overpass', 'error'); return { elements: [], greenFailed: true, coreFailed: true }; }),
+    fetchCrimeData()
+      .then((r) => { setPhase(postcode, 'crime', 'done'); return r; })
+      .catch((e: any) => { console.error("Crime failed:", e.message); setPhase(postcode, 'crime', 'error'); return null; }),
+    fetchNearest()
+      .then((r) => { setPhase(postcode, 'nearby', 'done'); return r; })
+      .catch((e: any) => { console.error("Nearby failed:", e.message); setPhase(postcode, 'nearby', 'error'); return []; }),
+    getAirQualityFromDefra()
+      .then((r) => { setPhase(postcode, 'air', 'done'); return r; })
+      .catch((e: any) => { console.error("Air quality failed:", e.message); setPhase(postcode, 'air', 'error'); return null; }),
+    getFloodRisk()
+      .then((r) => { setPhase(postcode, 'flood', 'done'); return r; })
+      .catch((e: any) => { console.error("Flood risk failed:", e.message); setPhase(postcode, 'flood', 'error'); return null; }),
+    getMobileCoverage()
+      .then((r) => { setPhase(postcode, 'mobile', 'done'); return r; })
+      .catch((e: any) => { console.error("Mobile failed:", e.message); setPhase(postcode, 'mobile', 'error'); return []; }),
+    getBroadbandAvailability()
+      .then((r) => { setPhase(postcode, 'broadband', 'done'); return r as any; })
+      .catch((e: any) => { console.error("Broadband failed:", e.message); setPhase(postcode, 'broadband', 'error'); return []; }),
     getEvChargers()
+      .then((r) => { setPhase(postcode, 'ev', 'done'); return r; })
+      .catch((e: any) => { console.error("EV chargers failed:", e.message); setPhase(postcode, 'ev', 'error'); return []; }),
   ]);
   console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
 
@@ -1672,6 +1727,16 @@ export async function registerRoutes(
     const assessment = await storage.getAssessmentByToken(req.params.token);
     if (!assessment) return res.status(404).json({ message: 'Assessment not found' });
     res.json(assessment);
+  });
+
+  // Live progress for the "Analysing Area" dialog: which data-source searches have
+  // completed. Keyed by normalized postcode. Returns { phase: {name: 'pending'|'done'|'error'} }.
+  // Purely supplementary — the report still loads from /api/assess regardless.
+  app.get("/api/assess/progress/:postcode", (req, res) => {
+    const key = String(req.params.postcode || "").trim().toUpperCase();
+    if (!key) return res.status(400).json({ message: "Missing postcode" });
+    const state = assessProgress.get(key);
+    res.json({ phase: state ? state.phase : {} });
   });
 
   app.post("/api/assess/token/:token/refresh", assessRateLimit, async (req, res) => {

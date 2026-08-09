@@ -485,4 +485,5 @@ by the harness until their reference data is added.
 | `npm run check` | `tsc` type-check |
 | `npm run sync:schools` | refresh `server/data/schools.json` (England schools + Ofsted ratings, via Ofsted latest-inspections CSV) |
 | `npm run sync:scotland-crime` | refresh `server/data/scotland-datazone-crime.json` (SIMD crime proxy) |
+| `npm run sync:census-demographics` | build `server/data/census-demographics.json` from a joined ONS Census 2021 LSOA CSV dropped in `server/data/import/census-demographics-input.csv` (free OGL). See `scripts/sync-census-demographics.ts` header for the sources + column aliases. |
 | `npm run validate:score` | correlation check vs official IMD/SIMD (requires running server) |

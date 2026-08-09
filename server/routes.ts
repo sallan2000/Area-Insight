@@ -172,6 +172,113 @@ function getUkhpi(): UkhpiData | null {
   }
   return ukhpiCache;
 }
+
+// ---------------------------------------------------------------------------
+// ONS Census 2021 demographics — FREE, Open Government Licence. Loaded from a
+// sync-generated JSON (scripts/sync-census-demographics.ts) keyed by LSOA21 code
+// (which postcodes.io returns as codes.lsoa21). Covers age structure, tenure mix
+// and population — all-UK, no API key. Degrades to null if the sync hasn't run.
+// ---------------------------------------------------------------------------
+type CensusDemographicsEntry = {
+  lsoa21: string;
+  population: number;
+  ageUnder18: number;   // % of usual residents under 18
+  age65Plus: number;    // % aged 65+
+  ownerOccupied: number;     // % households owned outright or on a mortgage
+  privateRented: number;     // % private-rented households
+  socialRented: number;      // % social-rented households
+  noCar: number;             // % households with no car/van
+  source: string;
+};
+let censusDemographicsCache: Record<string, CensusDemographicsEntry> | null | undefined = undefined;
+function getCensusDemographics(): Record<string, CensusDemographicsEntry> | null {
+  if (censusDemographicsCache !== undefined) return censusDemographicsCache;
+  try {
+    const basePath = join(process.cwd(), 'server', 'data', 'census-demographics.json');
+    const distPath = join(process.cwd(), 'dist', 'data', 'census-demographics.json');
+    let data: string;
+    try { data = readFileSync(basePath, 'utf-8'); }
+    catch { data = readFileSync(distPath, 'utf-8'); }
+    censusDemographicsCache = JSON.parse(data) as Record<string, CensusDemographicsEntry>;
+    console.log(`Loaded Census 2021 demographics for ${Object.keys(censusDemographicsCache).length} LSOAs`);
+  } catch (e) {
+    console.warn("census-demographics.json not found — Demographics section will show 'data not available' until `npm run sync:census-demographics` is run.");
+    censusDemographicsCache = null;
+  }
+  return censusDemographicsCache;
+}
+
+// ---------------------------------------------------------------------------
+// EPC (Energy Performance Certificate) — FREE GOV API (epc.opendatacommunities.org),
+// Open Government Licence. Requires a free API key (register once) supplied via the
+// EPC_API_KEY env var. Returns the modal/most-recent EPC band for the postcode, an
+// estimated annual heating cost, and counts. Degrades gracefully when no key is set
+// or the API is unreachable, so the assess flow never blocks on it.
+// ---------------------------------------------------------------------------
+const EPC_API_KEY = process.env.EPC_API_KEY || "";
+type EpcResult = {
+  available: boolean;
+  reason?: string;            // 'no-key' | 'api-error' | 'empty' | 'timeout'
+  count?: number;
+  avgBand?: string;           // modal EPC band (A–G) among certificates
+  avgEpcScore?: number;       // mean SAP/EPC score
+  estHeatingCost?: number;    // estimated annual heating cost (£)
+  estEnergyCost?: number;     // estimated annual energy cost (£)
+  latestDate?: string | null;
+  source?: string;
+};
+async function fetchEpc(postcode: string): Promise<EpcResult> {
+  if (!EPC_API_KEY) {
+    return { available: false, reason: 'no-key' };
+  }
+  const pc = postcode.replace(/\s+/g, '');
+  const url = `https://epc.opendatacommunities.org/api/v1/domestic/search?postcode=${encodeURIComponent(pc)}&size=50`;
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 8000) as any;
+    const res = await fetch(url, {
+      headers: { Authorization: EPC_API_KEY, Accept: 'application/json' },
+      signal: ctrl.signal,
+    });
+    clearTimeout(to);
+    if (!res.ok) return { available: false, reason: 'api-error' };
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('json')) return { available: false, reason: 'api-error' };
+    const json: any = await res.json();
+    const rows: any[] = json?.rows || [];
+    if (!Array.isArray(rows) || rows.length === 0) return { available: false, reason: 'empty' };
+    // Aggregate bands + costs across certificates (each row is one certificate).
+    const bandCounts: Record<string, number> = {};
+    let scoreSum = 0, scoreN = 0, heatSum = 0, energySum = 0, costN = 0, latest: string | null = null;
+    for (const r of rows) {
+      const band = r?.current_band || r?.building_environment || r?.current_energy_efficiency_band;
+      const b = (band || '').toString().trim().toUpperCase();
+      if (b) bandCounts[b] = (bandCounts[b] || 0) + 1;
+      const score = parseFloat(r?.current_energy_efficiency || r?.energy_rating || r?.current_energy_efficiency_score);
+      if (!isNaN(score)) { scoreSum += score; scoreN++; }
+      const heat = parseFloat(r?.heating_cost_current || r?.heating_cost || r?.estimated_heating_cost_current);
+      const energy = parseFloat(r?.energy_cost_current || r?.energy_cost || r?.estimated_energy_cost_current);
+      if (!isNaN(heat)) { heatSum += heat; costN++; }
+      if (!isNaN(energy)) energySum += energy;
+      const d = r?.lodgement_date || r?.completion_date || r?.date;
+      if (d && (!latest || d > latest)) latest = d;
+    }
+    const modalBand = Object.entries(bandCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || undefined;
+    return {
+      available: true,
+      count: rows.length,
+      avgBand: modalBand,
+      avgEpcScore: scoreN > 0 ? Math.round(scoreSum / scoreN) : undefined,
+      estHeatingCost: costN > 0 ? Math.round(heatSum / costN) : undefined,
+      estEnergyCost: costN > 0 ? Math.round(energySum / costN) : undefined,
+      latestDate: latest,
+      source: 'HM EPC Register (epc.opendatacommunities.org), OGL',
+    };
+  } catch (e: any) {
+    return { available: false, reason: e?.name === 'AbortError' ? 'timeout' : 'api-error' };
+  }
+}
+
 // Normalize a council-area name for matching (lowercase, collapse whitespace,
 // drop common prefixes/suffixes that differ between UKHPI and postcodes.io).
 function normalizeCouncilName(n: string): string {
@@ -278,6 +385,8 @@ interface ProcessElementsInput {
   evChargers: any[];
   crimeDataUnavailable: boolean;
   greenHealthFailed?: boolean;
+  epc?: EpcResult;
+  demographics?: CensusDemographicsEntry | null;
 }
 
 // Council tax band → yearly charge estimate. There is no free per-local-authority
@@ -291,7 +400,7 @@ const BAND_MULTIPLIER: Record<string, number> = {
 };
 
 function processElements(input: ProcessElementsInput) {
-  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable, greenHealthFailed } = input;
+  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable, greenHealthFailed, epc, demographics } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -816,6 +925,8 @@ function processElements(input: ProcessElementsInput) {
       nationalAvgBandD: NATIONAL_AVG_BAND_D
     },
     walkability,
+    epc: epc ?? { available: false, reason: epc?.reason || 'not-fetched' },
+    demographics: demographics ?? null,
     connectivity: {
       broadband: broadband,
       mobile: mobile
@@ -945,6 +1056,11 @@ async function fetchAreaMetrics(postcode: string) {
   const lng = geoData.result.longitude;
   const street = geoData.result.parish || geoData.result.admin_ward || "";
   const city = geoData.result.admin_district || geoData.result.parish || "";
+
+  // Demographics (ONS Census 2021) — sync lookup by LSOA21 (postcodes.io provides it).
+  const lsoa21 = geoData.result.codes?.lsoa21 || null;
+  const demographics = lsoa21 ? (getCensusDemographics()?.[lsoa21] ?? null) : null;
+  if (lsoa21 && !demographics) console.log(`Demographics: no Census entry for LSOA21 ${lsoa21} (sync may be incomplete)`);
 
   // --- Define all independent async tasks (all only need lat/lng/postcode from geocoding) ---
 
@@ -1411,7 +1527,8 @@ async function fetchAreaMetrics(postcode: string) {
     floodRisk,
     mobile,
     broadband,
-    evChargers
+    evChargers,
+    epc
   ] = await Promise.all([
     fetchFromOverpass()
       .then((r) => { setPhase(postcode, 'overpass', 'done'); return r; })
@@ -1437,6 +1554,9 @@ async function fetchAreaMetrics(postcode: string) {
     getEvChargers()
       .then((r) => { setPhase(postcode, 'ev', 'done'); return r; })
       .catch((e: any) => { console.error("EV chargers failed:", e.message); setPhase(postcode, 'ev', 'error'); return []; }),
+    fetchEpc(postcode)
+      .then((r) => { setPhase(postcode, 'epc', 'done'); return r; })
+      .catch((e: any) => { console.error("EPC failed:", e.message); setPhase(postcode, 'epc', 'error'); return { available: false, reason: 'api-error' }; }),
   ]);
   console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
 
@@ -1526,7 +1646,7 @@ async function fetchAreaMetrics(postcode: string) {
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
     prefetchedAirQuality, floodRisk, mobile, broadband, evChargers,
-    crimeDataUnavailable, greenHealthFailed
+    crimeDataUnavailable, greenHealthFailed, epc, demographics
   });
 }
 

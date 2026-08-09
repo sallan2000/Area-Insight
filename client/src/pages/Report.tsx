@@ -48,6 +48,8 @@ import { EnvironmentSection } from "@/components/report/EnvironmentSection";
 import { ConnectivitySection } from "@/components/report/ConnectivitySection";
 import { EvChargersSection } from "@/components/report/EvChargersSection";
 import { GreenHealthSection } from "@/components/report/GreenHealthSection";
+import { EPCSection } from "@/components/report/EPCSection";
+import { DemographicsSection } from "@/components/report/DemographicsSection";
 import { PropertySalesSection } from "@/components/report/PropertySalesSection";
 import { ReportExportView } from "@/components/report/ReportExportView";
 import { useAuth } from "@/hooks/use-auth";
@@ -1009,6 +1011,10 @@ export default function Report() {
           )}
 
           <PropertySalesSection data={propertySalesLoading ? null : propertySales} />
+
+          <EPCSection data={raw.epc} />
+
+          <DemographicsSection data={raw.demographics} />
 
           {/* Nearest Neighbourhoods */}
           {raw.nearestPostcodes && raw.nearestPostcodes.length > 0 && (

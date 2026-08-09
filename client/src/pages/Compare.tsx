@@ -24,7 +24,8 @@ import {
   Zap,
   FlaskConical,
   AlertTriangle,
-  Footprints
+  Footprints,
+  Users
 } from "lucide-react";
 import { 
   Dialog,
@@ -414,6 +415,8 @@ export default function Compare() {
                       { name: 'Amenities', key: 'amenities', icon: Store, type: 'score' },
                       { name: 'Council Tax', key: 'councilTax', icon: Receipt, type: 'text', getValue: (r: any) => r?.councilTax?.estimatedBand ? `Band ${r.councilTax.estimatedBand}${r.councilTax.estimatedAnnualCost != null ? ` · ~£${r.councilTax.estimatedAnnualCost.toLocaleString("en-GB")}/yr` : ''}` : 'N/A' },
                       { name: 'Walkability', key: 'walkability', icon: Footprints, type: 'text', getValue: (r: any) => r?.walkability ? `Walk ${r.walkability.score}/100 · Bike ${r.walkability.bikeScore}/100` : 'N/A' },
+                      { name: 'EPC band', key: 'epc', icon: Zap, type: 'text', getValue: (r: any) => r?.epc?.available && r.epc.avgBand ? r.epc.avgBand : (r?.epc?.reason === 'no-key' ? 'Key not set' : 'N/A') },
+                      { name: 'Demographics', key: 'demographics', icon: Users, type: 'text', getValue: (r: any) => r?.demographics ? `${r.demographics.population.toLocaleString("en-GB")} residents · ${Math.round(r.demographics.age65Plus)}% 65+` : 'N/A' },
                       { name: 'Broadband', key: 'broadband', icon: Wifi, type: 'text', getValue: getConnectivityValue },
                       { name: 'Mobile Coverage', key: 'mobile', icon: Signal, type: 'text', getValue: (r: any) => {
                         const m = r?.connectivity?.mobile;

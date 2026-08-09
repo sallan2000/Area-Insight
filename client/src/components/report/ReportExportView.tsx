@@ -1,4 +1,4 @@
-import { Shield, Bus, GraduationCap, Store, ShoppingCart, ShoppingBag, Building2, Trees, AlertTriangle, Footprints } from "lucide-react";
+import { Shield, Bus, GraduationCap, Store, ShoppingCart, ShoppingBag, Building2, Trees, AlertTriangle, Footprints, Zap, Users } from "lucide-react";
 
 const BAR_COLORS: Record<string, string> = {
   "bg-red-500": "#ef4444",
@@ -287,6 +287,44 @@ export function ReportExportView({ report, scores, raw, overallScore, safetyBrea
               school {raw.walkability.nearestSchoolKm != null ? `${raw.walkability.nearestSchoolKm.toFixed(2)} km` : "—"}.
               Derived from OpenStreetMap.
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EPC (Energy Performance) ── */}
+      {raw.epc?.available && (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeading Icon={Zap} title="Energy Performance (EPC)" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#92400e" }}>
+              <strong>Typical band {raw.epc.avgBand}</strong>
+              {raw.epc.count ? ` — ${raw.epc.count} certificate${raw.epc.count === 1 ? "" : "s"}` : ""}.
+            </div>
+            {raw.epc.estHeatingCost != null && (
+              <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#374151" }}>
+                Est. heating cost <strong>£{raw.epc.estHeatingCost.toLocaleString("en-GB")}/yr</strong>.
+              </div>
+            )}
+            {raw.epc.estEnergyCost != null && (
+              <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#374151" }}>
+                Est. energy cost <strong>£{raw.epc.estEnergyCost.toLocaleString("en-GB")}/yr</strong>.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Demographics (Census 2021) ── */}
+      {raw.demographics && (
+        <div style={{ marginBottom: 24 }}>
+          <SectionHeading Icon={Users} title="Demographics (Census 2021)" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 16 }}>
+            <div style={{ background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#3730a3" }}>
+              <strong>{raw.demographics.population.toLocaleString("en-GB")}</strong> residents.
+            </div>
+            <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#374151" }}>Under 18: <strong>{Math.round(raw.demographics.ageUnder18)}%</strong></div>
+            <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#374151" }}>Aged 65+: <strong>{Math.round(raw.demographics.age65Plus)}%</strong></div>
+            <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#374151" }}>Owner occupied: <strong>{Math.round(raw.demographics.ownerOccupied)}%</strong></div>
           </div>
         </div>
       )}

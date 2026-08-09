@@ -13,6 +13,7 @@
     "sync:scotland-crime": "python3 scripts/sync-scotland-crime.py",
     "sync:property-sales": "tsx scripts/sync-property-sales.ts",
     "sync:property-prices-ukhpi": "tsx scripts/sync-property-prices-ukhpi.ts",
+    "sync:census-demographics": "tsx scripts/sync-census-demographics.ts",
     "validate:score": "tsx scripts/validate-score.ts"
   },
   "dependencies": {

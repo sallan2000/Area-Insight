@@ -1024,7 +1024,13 @@ export default function Report() {
                       setLocation(`/?postcode=${encodeURIComponent(n.postcode)}`);
                     }}
                   >
+                    <MapPin className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
                     {n.label}
+                    {typeof n.distance === "number" && (
+                      <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                        {Math.round(n.distance)}m
+                      </span>
+                    )}
                   </Button>
                 ))}
               </div>

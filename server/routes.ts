@@ -1502,15 +1502,44 @@ async function fetchAreaMetrics(postcode: string) {
     } catch (e) { console.error("EV charger fetch failed:", e); console.log(`[timing] EV chargers phase: ${Date.now() - tEv}ms (failed)`); return []; }
   };
 
-  // 2h. Nearest postcodes (shown in UI as "Nearby Neighbourhoods" — no background pre-fetching)
-  // Nearby "neighbourhoods" = neighbouring OUTCODES (districts), not adjacent unit
-  // postcodes. postcodes.io/{pc}/nearest is unreliable (404s for some Scottish/NI
-  // postcodes; returns only the same-building unit postcode for dense areas like
-  // SW1A). outcodes/{outcode}/nearest returns genuine adjacent districts, which is
-  // what "Nearby Neighbourhoods" should mean. For each neighbour district we
-  // reverse-geocode its centroid to a real postcode to navigate to.
-  const fetchNearest = async (): Promise<{ label: string; postcode: string }[]> => {
-    const tNearest = Date.now();
+  // 2h. Nearest postcodes (shown in UI as "Nearby Neighbourhoods").
+  //
+  // PRIMARY: /postcodes/{pc}/nearest — postcodes.io ranks neighbouring UNIT
+  // postcodes by true straight-line distance from the searched point, so these
+  // are genuinely the streets next door (e.g. EH1 1EG -> EH1 1JX @32m, EH1 2EX
+  // @40m), not a far-away district centroid.
+  //
+  // FALLBACK: the outcode-centroid method is kept only when /nearest yields too
+  // few distinct results — it's less relevant (a neighbour district's centroid can
+  // be hundreds of metres away, and its reverse-geocode sometimes 404s, e.g. DG11)
+  // but it's better than an empty list. Empirically /nearest 404s for a few
+  // Scottish/NI postcodes and returns only the same-building unit in dense areas
+  // like SW1A, so the fallback fills those gaps.
+  const pcNearest = async (): Promise<{ label: string; postcode: string }[]> => {
+    try {
+      const res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}/nearest?limit=12`, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return [];
+      const data = await res.json();
+      const outcode = geoData.result.outcode;
+      const rows = (data.result || [])
+        .map((r: any) => ({ pc: r.postcode as string, distance: typeof r.distance === "number" ? r.distance : null }))
+        .filter((r: any) => r.pc && r.pc !== postcode && r.pc.replace(/\s+/g, "").toUpperCase() !== postcode.replace(/\s+/g, "").toUpperCase())
+        // Prefer postcodes in the SAME outcode (truly the local neighbourhood)
+        // first; others follow. Keeps the list geographically tight.
+        .sort((a: any, b: any) => {
+          const ao = a.pc.split(" ")[0] === outcode ? 0 : 1;
+          const bo = b.pc.split(" ")[0] === outcode ? 0 : 1;
+          return ao - bo;
+        })
+        .slice(0, 5)
+        .map((r: any) => ({ label: r.pc, postcode: r.pc, distance: r.distance }));
+      return rows;
+    } catch {
+      return [];
+    }
+  };
+
+  const outcodeFallback = async (): Promise<{ label: string; postcode: string }[]> => {
     try {
       const outcode = geoData.result.outcode;
       if (!outcode) return [];
@@ -1532,20 +1561,36 @@ async function fetchAreaMetrics(postcode: string) {
           const pcRes = await fetch(`https://api.postcodes.io/postcodes?lon=${longitude}&lat=${latitude}&limit=1`, { signal: AbortSignal.timeout(8000) });
           if (!pcRes.ok) return null;
           const pcData = await pcRes.json();
-          const postcode = pcData.result?.[0]?.postcode;
-          if (!postcode) return null;
-          // Show the resolved FULL postcode (e.g. "EH2 4DF"), not the outcode
-          // (e.g. "EH2"), so what's displayed always matches what navigation uses.
-          // Neighbours that didn't resolve to a full postcode return null above and
-          // are filtered out, so only complete postcodes are listed.
-          return { label: postcode, postcode };
+          const pc = pcData.result?.[0]?.postcode;
+          if (!pc) return null;
+          return { label: pc, postcode: pc, distance: null };
         } catch {
           return null;
         }
       }));
-      const cleaned = results.filter((r: any): r is { label: string; postcode: string } => r !== null).slice(0, 5);
-      console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (${cleaned.length} districts)`);
-      return cleaned;
+      return results.filter((r: any): r is { label: string; postcode: string } => r !== null).slice(0, 5);
+    } catch {
+      return [];
+    }
+  };
+
+  const fetchNearest = async (): Promise<{ label: string; postcode: string }[]> => {
+    const tNearest = Date.now();
+    try {
+      const primary = await pcNearest();
+      // If /nearest gave us too few (404, or just the same-building unit in dense
+      // areas), top up from the outcode-centroid fallback so the list isn't empty
+      // or a single item.
+      if (primary.length < 3) {
+        const fallback = await outcodeFallback();
+        const seen = new Set(primary.map((p) => p.postcode));
+        for (const f of fallback) {
+          if (!seen.has(f.postcode)) { primary.push(f); seen.add(f.postcode); }
+          if (primary.length >= 5) break;
+        }
+      }
+      console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (${primary.length} neighbours)`);
+      return primary;
     } catch {
       console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (failed)`);
       return [];

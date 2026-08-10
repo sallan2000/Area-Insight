@@ -652,8 +652,7 @@ export default function Report() {
                         </p>
                         {raw.councilTax.estimatedAnnualCost != null && (
                           <p className="text-sm text-muted-foreground mt-1">
-                            Estimated <span className="font-semibold text-foreground">£{raw.councilTax.estimatedAnnualCost.toLocaleString("en-GB")}</span> per year{" "}
-                            <span className="text-[10px]">(from national avg Band D × band multiplier; actual LA charge varies)</span>
+                            Estimated <span className="font-semibold text-foreground">£{raw.councilTax.estimatedAnnualCost.toLocaleString("en-GB")}</span> per year
                           </p>
                         )}
                         <p className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-council-tax-source">

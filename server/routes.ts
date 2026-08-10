@@ -1582,12 +1582,18 @@ async function fetchAreaMetrics(postcode: string) {
           const ocData = await ocRes.json();
           const { latitude, longitude } = ocData.result || {};
           if (latitude == null || longitude == null) return null;
+          // Compute the true straight-line distance (metres) from the searched
+          // point to this district centroid, so every suggested neighbourhood
+          // carries a distance consistent with the primary /nearest rows (which
+          // postcodes.io returns in metres). Without this, fallback rows showed
+          // no distance and the list looked inconsistent.
+          const km = getDistance(lat, lng, latitude, longitude);
           const pcRes = await fetch(`https://api.postcodes.io/postcodes?lon=${longitude}&lat=${latitude}&limit=1`, { signal: AbortSignal.timeout(8000) });
           if (!pcRes.ok) return null;
           const pcData = await pcRes.json();
           const pc = pcData.result?.[0]?.postcode;
           if (!pc) return null;
-          return { label: pc, postcode: pc, distance: null };
+          return { label: pc, postcode: pc, distance: Math.round(km * 1000) };
         } catch {
           return null;
         }
@@ -1614,7 +1620,10 @@ async function fetchAreaMetrics(postcode: string) {
         }
       }
       console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (${primary.length} neighbours)`);
-      return primary;
+      // Every row now carries a distance (primary from postcodes.io /nearest in
+      // metres; fallback computed from the district centroid). Sort nearest-first
+      // so the suggestion chips are geographically ordered and consistent.
+      return primary.sort((a: any, b: any) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
     } catch {
       console.log(`[timing] nearest postcodes phase: ${Date.now() - tNearest}ms (failed)`);
       return [];

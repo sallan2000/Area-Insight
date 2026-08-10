@@ -891,11 +891,15 @@ export default function Report() {
                             </div>
                             <div>
                               <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Primary & Nursery</h5>
-                              {renderAmenityList(raw.schools?.primaryList || [], 'primary_school')}
+                              <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2">
+                                {renderAmenityList(raw.schools?.primaryList || [], 'primary_school')}
+                              </div>
                             </div>
                             <div>
                               <h5 className="text-xs font-semibold text-muted-foreground uppercase mb-3">Secondary & Higher</h5>
-                              {renderAmenityList(raw.schools?.secondaryList || [], 'secondary_school')}
+                              <div className="max-h-[320px] overflow-y-auto pr-1 space-y-2">
+                                {renderAmenityList(raw.schools?.secondaryList || [], 'secondary_school')}
+                              </div>
                             </div>
                           </div>
                         )}

@@ -545,10 +545,28 @@ function processElements(input: ProcessElementsInput) {
   const osmSchools = elementsWithDistance.filter((e: any) =>
     e.tags?.amenity === "school" || e.tags?.amenity === "college" || e.tags?.amenity === "kindergarten"
   );
-  const primarySchoolsAll = osmSchools
+  // De-duplicate schools by identity: Overpass frequently returns the SAME physical
+  // school as both a `node` (its point location) and a `way` (its building outline),
+  // and POIs are sometimes repeated. Without de-duplication an area with ~13 real
+  // schools can be counted as ~26, inflating the score and making the summary count
+  // disagree with the rendered list. Collapse entries that share a normalised name
+  // AND sit within ~40m of each other, keeping the closer one.
+  const dedupeKey = (e: any) => {
+    const name = (e.tags?.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+    return `${name}|${Math.round((e.lat ?? 0) * 1000)}|${Math.round((e.lon ?? 0) * 1000)}`;
+  };
+  const seen = new Set<string>();
+  const uniqueSchools: any[] = [];
+  for (const s of osmSchools) {
+    const key = dedupeKey(s);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueSchools.push(s);
+  }
+  const primarySchoolsAll = uniqueSchools
     .filter((e: any) => classifyPhase(e) === "primary")
     .map((e: any) => enrichWithRating({ name: e.tags?.name || "Unnamed", distance: e.distance, phase: "primary" as const }));
-  const secondarySchoolsAll = osmSchools
+  const secondarySchoolsAll = uniqueSchools
     .filter((e: any) => classifyPhase(e) === "secondary")
     .map((e: any) => enrichWithRating({ name: e.tags?.name || "Unnamed", distance: e.distance, phase: "secondary" as const }));
 
@@ -907,8 +925,8 @@ function processElements(input: ProcessElementsInput) {
       primaryCount: primarySchools.length,
       secondaryCount: secondarySchools.length,
       avgDistanceKm: Math.round(avgDist * 100) / 100,
-      primaryList: primarySchools.slice(0, 10).map((s: any) => ({ name: s.name, distance: s.distance, rating: s.rating, ratingScore: s.ratingScore })),
-      secondaryList: secondarySchools.slice(0, 10).map((s: any) => ({ name: s.name, distance: s.distance, rating: s.rating, ratingScore: s.ratingScore }))
+      primaryList: primarySchools.map((s: any) => ({ name: s.name, distance: s.distance, rating: s.rating, ratingScore: s.ratingScore })),
+      secondaryList: secondarySchools.map((s: any) => ({ name: s.name, distance: s.distance, rating: s.rating, ratingScore: s.ratingScore }))
     },
     environment: {
       airQuality,

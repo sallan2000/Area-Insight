@@ -98,13 +98,30 @@ def detect_kind(headers):
 
 
 def col_index(headers, *keywords):
-    """Return first column index whose normalised header contains all keywords (OR across args)."""
+    """Return deduplicated leaf column indices whose header contains a keyword.
+
+    One index per *matching column* (not per keyword) — multiple keywords can
+    match the same column, and summing would otherwise double-count it.
+
+    Matched parent/child columns are collapsed to the leaf: e.g. Nomis sheets
+    carry both `Private rented` (parent total) and `Private rented: ... agency`
+    (children); summing both over-counts. Any matched column whose header is a
+    prefix of another matched column's header is dropped, so only the leaf
+    (most granular) columns are returned.
+    """
     out = []
-    for kw in keywords:
-        for i, h in enumerate(headers):
-            if kw in norm(h):
+    seen = set()
+    for i, h in enumerate(headers):
+        n = norm(h)
+        for kw in keywords:
+            if kw in n and i not in seen:
                 out.append(i)
+                seen.add(i)
                 break
+    # drop parent columns that are a prefix of a sibling leaf column
+    out = [i for i in out
+           if not any(i != j and norm(headers[j]).startswith(norm(headers[i]) + ":")
+                      for j in out)]
     return out
 
 
@@ -135,23 +152,50 @@ def load_rows(path):
 # ---------- per-table extraction ----------
 
 def extract_age(headers, rows):
-    """Return {lsoa: (total_residents, under18, over65)}"""
+    """Return {lsoa: (total_residents, under18, over65)}.
+
+    Supports two header layouts:
+      * ONS bulk:          total "All usual residents", bands labelled "0","5","65"...
+      * Nomis (nomisweb):  total "Age: Total", bands "Age: Aged 4 years and under",
+                           "Age: Aged 5 to 9 years", "Age: Aged 90 years and over".
+    """
     li = find_lsoa_col(headers)
-    # total column
+    # total column — ONS bulk or Nomis
     total_idx = None
     for i, h in enumerate(headers):
         n = norm(h)
-        if "all usual residents" in n or n == "total" or "total usual residents" in n:
+        if "all usual residents" in n or "total usual residents" in n \
+           or n == "total" or n == "age: total":
             total_idx = i
             break
-    # numeric band columns: header should be a number-ish label
+    if total_idx is None:
+        for i, h in enumerate(headers):
+            if "total" in norm(h) and "age" in norm(h):
+                total_idx = i
+                break
+    # band columns — numeric "0"/"5" labels OR Nomis "Age: Aged X to Y years"
     band_cols = []
     for i, h in enumerate(headers):
         n = norm(h).strip()
+        # ONS bulk numeric band label, e.g. "0", "5", "65", "90+"
         m = re.match(r"^(\d+)\s*(?:to\s*(\d+))?\s*(\+)?$", n)
         if m:
             lo = int(m.group(1))
             hi = int(m.group(2)) if m.group(2) else (200 if m.group(3) else lo)
+            band_cols.append((i, lo, hi))
+            continue
+        # Nomis band label, e.g. "age: aged 4 years and under",
+        # "age: aged 5 to 9 years", "age: aged 90 years and over"
+        m = re.search(r"aged\s+(\d+)(?:\s*to\s*(\d+))?\s*years", n)
+        if m:
+            lo = int(m.group(1))
+            if m.group(2):
+                hi = int(m.group(2))
+            elif "and over" in n or "and under" not in n:
+                # "90 years and over" -> top band
+                hi = 200
+            else:
+                hi = lo
             band_cols.append((i, lo, hi))
     out = {}
     for row in rows:
@@ -185,8 +229,8 @@ def extract_tenure(headers, rows):
                 total_idx = i
                 break
     cats = {
-        "owner_outright": col_index(headers, "owned outright"),
-        "owner_mortgage": col_index(headers, "mortgage"),
+        "owner_outright": col_index(headers, "owned outright", "owns outright"),
+        "owner_mortgage": col_index(headers, "mortgage", "owns with a mortgage"),
         "shared": col_index(headers, "shared ownership"),
         "social": col_index(headers, "social rented"),
         "private": col_index(headers, "private rented"),
@@ -289,9 +333,15 @@ def _save_download(data: bytes, kind: str, idx: int):
                              and not n.lower().endswith("/")]
                 if not csv_names:
                     return None
-                # Prefer the largest CSV (the data table, not a small lookup).
-                csv_names.sort(key=lambda n: z.getinfo(n).file_size, reverse=True)
-                name = csv_names[0]
+                # Prefer the LSOA-level extract. Nomis zips bundle OA/MSOA/LA
+                # files too, and OA is the *largest*, so "largest" would pull
+                # the wrong geography. This app needs LSOA21 codes.
+                lsoa_files = [n for n in csv_names if "lsoa" in n.lower()]
+                if lsoa_files:
+                    name = lsoa_files[0]
+                else:
+                    # No LSOA file present: fall back to the largest CSV.
+                    name = max(csv_names, key=lambda n: z.getinfo(n).file_size)
                 out = os.path.join(RAW_DIR, f"download_{idx}_{kind}.csv")
                 with open(out, "wb") as f:
                     f.write(z.read(name))

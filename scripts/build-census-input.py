@@ -11,6 +11,9 @@ You download (free, Open Government Licence) from ONS Census 2021, LSOA geograph
   3. Car or van availability      (table TS030)
 
 Place them in:  server/data/import/raw/   (any filenames).
+The links above may point directly at the `.csv` OR at the ONS `.zip` archive
+(each univariate download is a zip of CSV + README). This script handles both:
+a zip is unpacked and its CSV is kept; a direct `.csv` link is saved as-is.
 This script auto-detects which is which by their column headers, joins on the
 LSOA21 code, computes the percentages, and writes:
   server/data/import/census-demographics-input.csv
@@ -34,11 +37,13 @@ Notes on detection (robust to minor header wording):
 
 import csv
 import glob
+import io
 import json
 import os
 import re
 import sys
 import urllib.request
+import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR = os.path.join(ROOT, "server", "data", "import", "raw")
@@ -251,19 +256,53 @@ def download_sources():
     os.makedirs(RAW_DIR, exist_ok=True)
     downloaded = 0
     for i, (kind, u) in enumerate(urls.items()):
-        fn = os.path.join(RAW_DIR, f"download_{i}_{kind}.csv")
         try:
             print(f"[build-census-input] downloading {kind}: {u[:90]}")
             req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0 (Area-Insight sync)"})
             with urllib.request.urlopen(req, timeout=120) as r:
                 data = r.read()
-            with open(fn, "wb") as out:
-                out.write(data)
-            downloaded += 1
-            print(f"   -> saved {len(data)} bytes")
+            saved = _save_download(data, kind, i)
+            if saved:
+                downloaded += 1
+                print(f"   -> saved {saved} ({len(data)} bytes fetched)")
+            else:
+                print("   -> FAILED: no usable CSV found in response")
         except Exception as e:
             print(f"   -> FAILED: {e}")
     return downloaded > 0
+
+
+def _save_download(data: bytes, kind: str, idx: int):
+    """Normalise a downloaded payload to a CSV on disk.
+
+    Handles two cases:
+      * A direct .csv  -> written verbatim to raw/download_{i}_{kind}.csv
+      * A .zip archive -> the largest inner .csv is extracted to that path.
+    Returns the saved filename, or None if no CSV could be obtained.
+    """
+    # Quick zip signature check (PK\x03\x04) before falling back to raw CSV.
+    if data[:4] == b"PK\x03\x04":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                csv_names = [n for n in z.namelist()
+                             if n.lower().endswith(".csv")
+                             and not n.lower().endswith("/")]
+                if not csv_names:
+                    return None
+                # Prefer the largest CSV (the data table, not a small lookup).
+                csv_names.sort(key=lambda n: z.getinfo(n).file_size, reverse=True)
+                name = csv_names[0]
+                out = os.path.join(RAW_DIR, f"download_{idx}_{kind}.csv")
+                with open(out, "wb") as f:
+                    f.write(z.read(name))
+                return os.path.basename(out)
+        except zipfile.BadZipFile:
+            # Fall through: treat payload as a plain CSV despite the signature.
+            pass
+    out = os.path.join(RAW_DIR, f"download_{idx}_{kind}.csv")
+    with open(out, "wb") as f:
+        f.write(data)
+    return os.path.basename(out)
 
 
 def main():

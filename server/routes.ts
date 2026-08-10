@@ -1657,6 +1657,8 @@ function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
     return Math.min(100, Math.max(0, 100 * ((val - min) / (max - min))));
   };
 
+  // --- Transport ---
+  const transportNoData = (metrics.transport.stations?.length ?? 0) === 0 && (metrics.transport.busStopCount ?? 0) === 0;
   const t1 = metrics.transport.stations.length === 0 ? 0 : 100 - normalize(metrics.transport.trainDistance || 3, 0, 5);
   const t2 = metrics.transport.busStopCount === 0 ? 0 : normalize(metrics.transport.busStopDensity, 0, 30);
   const t3 = 100 - normalize(metrics.transport.commuteCityCenter, 20, 60);
@@ -1664,6 +1666,10 @@ function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
   const transportScoreFinalRaw = (metrics.transport.stations.length === 0 && metrics.transport.busStopCount === 0) ? 0 : (t1 * 0.7 + t2 * 0.35 + t3 * 0.35 + t4 * 0.15) / 1.55;
   const transportScoreFinal = metrics.transport.hasMajorHub ? transportScoreFinalRaw * 1.2 : transportScoreFinalRaw;
 
+  // --- Safety ---
+  // England/Wales with an empty crime feed must NOT read as "perfectly safe";
+  // treat a zero-count result (and the established unavailable flags) as no data.
+  const safetyNoData = !!metrics.crimeDataUnavailable || (!isScotland && !isNI && (metrics.crimeCount ?? 0) === 0);
   const severityCeiling = isScotland ? 150 : 380;
   const severityPoints = normalize(metrics.safetySeverity, 0, severityCeiling);
   const densityMultiplier = isScotland ? 1.0 : 0.8;
@@ -1686,36 +1692,75 @@ function calculateScores(metrics: any, isScotland: boolean, isNI: boolean) {
     // No live crime feed for NI. Use a neutral baseline so the area is neither
     // falsely safest nor falsely dangerous; the UI labels it as estimated.
     safetyBase = 70;
+  } else if (safetyNoData) {
+    // Empty feed (or failed lookup) — neutral baseline, NOT a perfect 100.
+    safetyBase = 70;
   } else {
     safetyBase = 100 - (crimeDensityPoints * 0.5) - (severityPoints * 0.5);
   }
   const trendMultiplier = metrics.crimeTrend === 'down' ? 1.1 : (metrics.crimeTrend === 'up' ? 0.8 : 1.0);
   const safetyScoreFinal = Math.min(100, Math.max(0, Math.round(safetyBase * trendMultiplier)));
 
+  // --- Amenities ---
   const a1 = normalize(metrics.amenities.amenitiesCount, 0, 40);
   const a2 = normalize(metrics.amenities.diversityIndex, 0, 12);
   const a3 = normalize(metrics.amenities.topRatedPlaces, 0, 10);
   const supermarketProximity = 100 - normalize(metrics.amenities.nearestSupermarketDist || 5, 0, 3);
   const amenitiesScoreFinal = (a1 * 0.4 + a2 * 0.25 + a3 * 0.15 + supermarketProximity * 0.2);
 
-  const schoolsScoreFinal = (metrics.schools.count === 0) ? 0 : (metrics.schools.score ?? 0);
-  // Green & Health are reported as descriptive context only (counts + nearest
+  // --- Schools ---
+  // A missing schools result (no nearby schools OR lookup failed) is "no data",
+  // not a worst-possible 0/100 that drags the composite down.
+  const schoolsNoData = (metrics.schools.count ?? 0) === 0;
+  const schoolsScoreFinal = schoolsNoData ? null : (metrics.schools.score ?? null);
+
+  // --- Green & Health are reported as descriptive context only (counts + nearest
   // distance), not scored — raw OSM element counts track tagging density rather
   // than real greenness/health access, so a synthetic 0-100 would be misleading.
   // They do not enter the headline composite (the four core pillars only):
   // transport .25, safety .35, amenities .20, schools .20.
-  const totalScore = (transportScoreFinal * 0.25)
-    + (Math.sqrt(safetyScoreFinal) * 10 * 0.35)
-    + (amenitiesScoreFinal * 0.20)
-    + (schoolsScoreFinal * 0.20);
+
+  // --- Composite: renormalise across pillars that actually have data. ---
+  // Missing pillars are excluded (not filled with a 0 or 100), so thin data never
+  // silently distorts the headline. Neutral-fill only happens inside the per-pillar
+  // formulae above (e.g. empty crime feed -> 70 baseline) so an excluded pillar is
+  // never scored as an extreme.
+  const NEUTRAL = 70;
+  const pillars: { key: string; weight: number; score: number | null; available: boolean }[] = [
+    { key: "transport", weight: 0.25, score: transportNoData ? null : Math.round(transportScoreFinal), available: !transportNoData },
+    { key: "safety", weight: 0.35, score: safetyNoData ? null : Math.round(safetyScoreFinal), available: !safetyNoData },
+    { key: "amenities", weight: 0.20, score: Math.round(amenitiesScoreFinal), available: true },
+    { key: "schools", weight: 0.20, score: schoolsScoreFinal, available: !schoolsNoData },
+  ];
+  const available = pillars.filter((p) => p.available && p.score != null);
+  const totalWeight = available.reduce((s, p) => s + p.weight, 0);
+  // If everything failed (shouldn't happen), fall back to neutral so we never divide by 0.
+  const safeWeight = totalWeight > 0 ? totalWeight : 1;
+  const rawComposite = available.reduce((s, p) => s + p.score! * p.weight, 0) / safeWeight;
+  // Safety uses a sqrt transform in the headline; preserve that for available safety.
+  let totalScore = rawComposite;
+  if (available.some((p) => p.key === "safety")) {
+    // Recompute with the sqrt transform applied only to the safety pillar.
+    const others = available.filter((p) => p.key !== "safety");
+    const othersWeight = others.reduce((s, p) => s + p.weight, 0);
+    const safetyPillar = pillars.find((p) => p.key === "safety")!;
+    const safetyContribution = Math.sqrt(safetyPillar.score!) * 10 * safetyPillar.weight;
+    const othersContribution = others.reduce((s, p) => s + p.score! * p.weight, 0);
+    totalScore = (safetyContribution + othersContribution) / safeWeight;
+  }
 
   return {
     transport: Math.round(transportScoreFinal),
     safety: Math.round(safetyScoreFinal),
     amenities: Math.round(amenitiesScoreFinal),
-    schools: Math.round(schoolsScoreFinal),
+    schools: schoolsScoreFinal == null ? 0 : Math.round(schoolsScoreFinal),
     greenHealth: null,
-    total: Math.round(totalScore)
+    total: Math.round(totalScore),
+    dataCoverage: {
+      pillarsAvailable: available.length,
+      pillarsTotal: pillars.length,
+      availableKeys: available.map((p) => p.key),
+    },
   };
 }
 

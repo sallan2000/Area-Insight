@@ -1035,6 +1035,30 @@ function setPhase(postcode: string, phase: AssessPhase, status: ProgressPhase) {
   state.phase[phase] = status;
 }
 
+// Race a promise against a hard deadline. On timeout it RESOLVES to `fallback`
+// (never rejects) so a slow external call degrades to its "unavailable" value
+// instead of hanging the whole parallel batch. `label` is only used for logging.
+async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
+  let to: NodeJS.Timeout;
+  const timer = new Promise<T>((resolve) => {
+    to = setTimeout(() => {
+      console.warn(`[timeout] ${label} exceeded ${ms}ms — using fallback`);
+      resolve(fallback);
+    }, ms);
+  });
+  try {
+    return await Promise.race([p, timer]);
+  } finally {
+    clearTimeout(to!);
+  }
+}
+
+// Hard ceiling for the whole parallel data-gather phase. If any single external
+// API is slow, the report still renders from whatever finished; the slow task's
+// slot is filled with its existing "unavailable" fallback. Keeps one wedged
+// provider (e.g. Overpass or Police UK) from killing the entire request.
+const PARALLEL_DEADLINE_MS = 20000;
+
 // Helper function to fetch external data
 async function fetchAreaMetrics(postcode: string) {
   const t0 = Date.now();
@@ -1519,6 +1543,48 @@ async function fetchAreaMetrics(postcode: string) {
 
   // 3. Run all tasks in parallel — nothing below depends on another until all complete
   const tParallel = Date.now();
+  // Each task is individually wrapped with a per-task timeout so a fast task keeps
+  // its real result even if one sibling is wedged. On its own deadline it degrades
+  // to that task's "unavailable" fallback; the global PARALLEL_DEADLINE_MS below is
+  // a backstop for the (rare) case where several are slow at once.
+  const parallelTasks = [
+    withTimeout(fetchFromOverpass().then((r) => { setPhase(postcode, 'overpass', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'overpass', 'error'); return { elements: [], greenFailed: true, coreFailed: true }; })(),
+      'overpass'),
+    withTimeout(fetchCrimeData().then((r) => { setPhase(postcode, 'crime', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'crime', 'error'); return null; })(),
+      'crime'),
+    withTimeout(fetchNearest().then((r) => { setPhase(postcode, 'nearby', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'nearby', 'error'); return []; })(),
+      'nearby'),
+    withTimeout(getAirQualityFromDefra().then((r) => { setPhase(postcode, 'air', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'air', 'error'); return null; })(),
+      'air'),
+    withTimeout(getFloodRisk().then((r) => { setPhase(postcode, 'flood', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'flood', 'error'); return null; })(),
+      'flood'),
+    withTimeout(getMobileCoverage().then((r) => { setPhase(postcode, 'mobile', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'mobile', 'error'); return []; })(),
+      'mobile'),
+    withTimeout(getBroadbandAvailability().then((r) => { setPhase(postcode, 'broadband', 'done'); return r as any; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'broadband', 'error'); return []; })(),
+      'broadband'),
+    withTimeout(getEvChargers().then((r) => { setPhase(postcode, 'ev', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'ev', 'error'); return []; })(),
+      'ev'),
+    withTimeout(fetchEpc(postcode).then((r) => { setPhase(postcode, 'epc', 'done'); return r; }),
+      PARALLEL_DEADLINE_MS,
+      (() => { setPhase(postcode, 'epc', 'error'); return { available: false, reason: 'timeout' }; })(),
+      'epc'),
+  ];
   const [
     overpassResult,
     crimeResult,
@@ -1529,35 +1595,7 @@ async function fetchAreaMetrics(postcode: string) {
     broadband,
     evChargers,
     epc
-  ] = await Promise.all([
-    fetchFromOverpass()
-      .then((r) => { setPhase(postcode, 'overpass', 'done'); return r; })
-      .catch((e: any) => { console.error("Overpass failed:", e.message); setPhase(postcode, 'overpass', 'error'); return { elements: [], greenFailed: true, coreFailed: true }; }),
-    fetchCrimeData()
-      .then((r) => { setPhase(postcode, 'crime', 'done'); return r; })
-      .catch((e: any) => { console.error("Crime failed:", e.message); setPhase(postcode, 'crime', 'error'); return null; }),
-    fetchNearest()
-      .then((r) => { setPhase(postcode, 'nearby', 'done'); return r; })
-      .catch((e: any) => { console.error("Nearby failed:", e.message); setPhase(postcode, 'nearby', 'error'); return []; }),
-    getAirQualityFromDefra()
-      .then((r) => { setPhase(postcode, 'air', 'done'); return r; })
-      .catch((e: any) => { console.error("Air quality failed:", e.message); setPhase(postcode, 'air', 'error'); return null; }),
-    getFloodRisk()
-      .then((r) => { setPhase(postcode, 'flood', 'done'); return r; })
-      .catch((e: any) => { console.error("Flood risk failed:", e.message); setPhase(postcode, 'flood', 'error'); return null; }),
-    getMobileCoverage()
-      .then((r) => { setPhase(postcode, 'mobile', 'done'); return r; })
-      .catch((e: any) => { console.error("Mobile failed:", e.message); setPhase(postcode, 'mobile', 'error'); return []; }),
-    getBroadbandAvailability()
-      .then((r) => { setPhase(postcode, 'broadband', 'done'); return r as any; })
-      .catch((e: any) => { console.error("Broadband failed:", e.message); setPhase(postcode, 'broadband', 'error'); return []; }),
-    getEvChargers()
-      .then((r) => { setPhase(postcode, 'ev', 'done'); return r; })
-      .catch((e: any) => { console.error("EV chargers failed:", e.message); setPhase(postcode, 'ev', 'error'); return []; }),
-    fetchEpc(postcode)
-      .then((r) => { setPhase(postcode, 'epc', 'done'); return r; })
-      .catch((e: any) => { console.error("EPC failed:", e.message); setPhase(postcode, 'epc', 'error'); return { available: false, reason: 'api-error' }; }),
-  ]);
+  ] = await Promise.all(parallelTasks);
   console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
 
   // `overpassFailed` (both queries empty) means genuinely no OSM data at all.
@@ -1967,17 +2005,37 @@ export async function registerRoutes(
         }
       }
 
-      const data = await fetchAreaMetrics(cleanPostcode);
-      const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
-      const partialData = data.overpassFailed || (data.green && data.green.failed) || (data.health && data.health.failed) || false;
-      const assessment = await storage.createAssessment({
-        postcode: cleanPostcode,
-        lat: data.lat,
-        lng: data.lng,
-        rawMetrics: { ...data.metrics, street: data.street, city: data.city },
-        scores: scores,
-        partialData
-      }, cached?.id);
+      // Overall request ceiling. The parallel phase already self-limits at
+      // PARALLEL_DEADLINE_MS; this guards the slower tail (geocode, scoring, DB
+      // writes) so a wedged upstream can never hang the connection past ~45s.
+      // On breach we return 504 with a retry hint rather than failing silently.
+      const OVERALL_DEADLINE_MS = 45000;
+      const compute = (async () => {
+        const data = await fetchAreaMetrics(cleanPostcode);
+        const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);
+        const partialData = data.overpassFailed || (data.green && data.green.failed) || (data.health && data.health.failed) || false;
+        return storage.createAssessment({
+          postcode: cleanPostcode,
+          lat: data.lat,
+          lng: data.lng,
+          rawMetrics: { ...data.metrics, street: data.street, city: data.city },
+          scores: scores,
+          partialData
+        }, cached?.id);
+      })();
+      const assessment = await Promise.race([
+        compute,
+        new Promise<any>((_, reject) => {
+          setTimeout(() => reject(new Error("overall-timeout")), OVERALL_DEADLINE_MS);
+        }),
+      ]).catch((e: any) => {
+        if (e?.message === "overall-timeout") {
+          return res.status(504).json({ message: "This area is taking longer than usual to analyse. Please retry in a moment." });
+        }
+        throw e;
+      });
+      // If the deadline rejected, we already responded 504 — stop here.
+      if (!assessment) return;
       if (userId) {
         await storage.recordUserSearch(userId, assessment.id);
       }

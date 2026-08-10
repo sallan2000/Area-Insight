@@ -161,6 +161,10 @@ total = transport * 0.25
       + schools   * 0.20
 ```
 
+The four pillars are **weighted as above only when their data is actually
+present**. Missing data is never scored as an extreme (0 or 100) and never
+silently distorts the headline — see *Partial-data handling* below.
+
 - **Transport** blends station distance, bus density, and commute estimates; a
   nearby major hub multiplies the score by 1.2.
 - **Safety** for England & Wales uses live police.uk street crime (12 months, within
@@ -203,6 +207,26 @@ total = transport * 0.25
   Both are reported as plain context. Raw OSM element counts track tagging density
   rather than real greenness, so scoring them would be misleading — hence no 0–100.
 
+**Partial-data handling (data never scores as an extreme).** A single failed
+or empty upstream lookup used to distort the headline — an empty England/Wales
+crime feed read as "perfectly safe" (100) and a missing schools lookup scored 0
+and dragged the composite down. `calculateScores` now:
+
+- **Empty/failed crime feed (E&W)** → neutral baseline **70**, not 100. (Scotland
+  uses the SIMD proxy; Northern Ireland already uses a neutral 70 baseline,
+  labelled `estimated-ni`.)
+- **Missing schools** (no nearby schools, or lookup failed) → **excluded** from
+  the composite rather than scored as 0.
+- **Composite renormalises** across the pillars that actually have data, so a
+  3-pillar result isn't unfairly compared to a 4-pillar one. The `√safety·10`
+  transform is preserved within the renormalised blend.
+- Returns a **`dataCoverage`** object `{ pillarsAvailable, pillarsTotal,
+  availableKeys }` (e.g. `{3, 4, ["transport","safety","amenities"]}`) so the UI /
+  share email can show a coverage indicator.
+
+This pairs with the timeout guards below: a section that times out feeds the
+same "unavailable" signal and is neutralised rather than distorting the score.
+
 **Composite weights (four core pillars):** Transport 25%, Safety 35%,
 Amenities 20%, Schools 20%.
 
@@ -238,7 +262,7 @@ All JSON. Validation via Zod (`shared/routes.ts`).
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/postcodes/:postcode/validate` | — | 422/404/502/200 `{valid}` |
-| POST | `/api/assess` | rate-limited | Create/return assessment for a postcode |
+| POST | `/api/assess` | rate-limited | Create/return assessment for a postcode. Returns **504** (`"taking longer than usual to analyse. Please retry in a moment."`) if the overall request exceeds the 45s ceiling. |
 | GET | `/api/assess/token/:token` | — | Fetch a shared assessment by token |
 | POST | `/api/assess/token/:token/refresh` | signed-in + 1h cooldown | Re-fetch fresh data |
 | GET | `/api/my-assessments` | signed-in | User's search history |
@@ -419,14 +443,18 @@ Area-Insight/
 
 - Scottish safety uses the SIMD 2020v2 Data Zone crime proxy (annual, not realtime) —\
   scored on the same scale as England, with the caveat shown in the report/email.
-- **England/Wales false-zero risk:** some dense urban postcodes (e.g. city-centre
-  wards) have many of their crimes geo-coded by police.uk to a generic "Force"
-  centroid *outside* the 1.5 km collection radius, so the live feed returns ~0 and
-  Safety can wrongly read as 100 ("safest"). The 1.5 km filter is intentional (it
-  stops force-centroid crimes from inflating everywhere else), so this is a known
-  trade-off rather than a bug to "fix" by widening the radius. A proper fix needs
-  neighbourhood-level crime rates. When detected (<5 crimes in 12 months) the report
-  labels it `safetySource: 'policeuk-lowconfidence'` so it isn't presented as fact.
+- **England/Wales false-zero risk (now mitigated).** Some dense urban postcodes
+  have many crimes geo-coded by police.uk to a generic "Force" centroid *outside*
+  the 1.5 km collection radius, so the live feed returns ~0 and Safety could
+  wrongly read as 100 ("safest"). This is now guarded: a zero-crime E&W result is
+  treated as **no data** (neutral 70 baseline) rather than a perfect score, so an
+  empty feed can no longer inflate Safety. When a real but low count (<5/12 months)
+  is detected, the report labels it `safetySource: 'policeuk-lowconfidence'`.
+- **Timeout resilience.** Every external fetch is individually capped
+  (`withTimeout`, 20s) so a single slow provider degrades to its "unavailable"
+  fallback without hanging the report — fast sections keep their real data. The
+  whole assess request also has a 45s ceiling; on breach it returns 504 with a
+  retry hint. A wedged upstream therefore never blanks the page.
 - **Northern Ireland safety is an estimated baseline, not live crime data.** PSNI
   crime statistics are not published via the police.uk API (it returns empty for NI
   postcodes), so NI no longer silently scores ~100. It uses a neutral baseline (70)
@@ -445,6 +473,20 @@ Area-Insight/
   server instances. Use a shared store (Redis) if running more than one process
   behind a load balancer.
 
+## Recently removed
+
+- **EPC (Energy Performance) and Census-demographics report sections.** Both were
+  removed from the on-screen report and the PDF/export view. The EPC lookup still
+  runs server-side (when `EPC_API_KEY` is set) and is stored in `rawMetrics`, but
+  is no longer displayed. The Census-demographics pipeline
+  (`scripts/build-census-input.py` + `npm run sync:census-demographics`) proved
+  hard to keep consistent across the ONS/Nomis source changes, so the **Demographics**
+  section was dropped from the UI; the generated `census-demographics.json` on the
+  host is stale and not consumed by the report. Neither removal affects the four
+  scored pillars.
+
+---
+
 ## Confidence bands & score validation
 
 The composite weights and transforms are **tuning constants**, not derived from a
@@ -455,7 +497,9 @@ each component is flagged `measured` (real data) or `estimated` (heuristic
 fallback — e.g. air quality with no nearby DEFRA station, or an Overpass outage),
 and an overall `high` / `medium` / `low` band plus plain-language notes are shown
 in the report UI and the emailed/exported report. It qualifies *data quality*, not
-accuracy.
+accuracy. The scoring layer additionally returns `dataCoverage`
+(`{ pillarsAvailable, pillarsTotal, availableKeys }`) describing how many of the
+four scored pillars had real data — the basis for a future partial-coverage badge.
 
 **Validation against official deprivation indices.** The accepted official measure
 of area liveability in GB is the **Index/SimD of Multiple Deprivation** (IMD for
@@ -485,5 +529,5 @@ by the harness until their reference data is added.
 | `npm run check` | `tsc` type-check |
 | `npm run sync:schools` | refresh `server/data/schools.json` (England schools + Ofsted ratings, via Ofsted latest-inspections CSV) |
 | `npm run sync:scotland-crime` | refresh `server/data/scotland-datazone-crime.json` (SIMD crime proxy) |
-| `npm run sync:census-demographics` | build `server/data/census-demographics.json` from a joined ONS Census 2021 LSOA CSV dropped in `server/data/import/census-demographics-input.csv` (free OGL). See `scripts/sync-census-demographics.ts` header for the sources + column aliases. |
+| `npm run sync:census-demographics` | build `server/data/census-demographics.json` from a joined ONS Census 2021 LSOA CSV dropped in `server/data/import/census-demographics-input.csv` (free OGL). **NOTE: the Demographics report section was removed — this pipeline is currently unused / the host JSON is stale.** |
 | `npm run validate:score` | correlation check vs official IMD/SIMD (requires running server) |

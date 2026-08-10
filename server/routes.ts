@@ -1048,6 +1048,12 @@ async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T, label: str
   });
   try {
     return await Promise.race([p, timer]);
+  } catch (e) {
+    // A hard rejection from `p` (e.g. Overpass Promise.any throwing
+    // AggregateError "All promises were rejected" when every mirror dies) must
+    // ALSO degrade to the fallback, not propagate and kill the whole assessment.
+    console.warn(`[timeout] ${label} rejected — using fallback:`, (e as Error)?.message || e);
+    return fallback;
   } finally {
     clearTimeout(to!);
   }
@@ -1196,10 +1202,13 @@ async function fetchAreaMetrics(postcode: string) {
     const tOverpass = Date.now();
     // Green query is the slower/failure-prone half (health + green tags, large radius).
     // Give it a retry so a transient Overpass timeout doesn't silently zero out
-    // green space + health for an area that genuinely has them.
+    // green space + health for an area that genuinely has them. Core gets the same
+    // retry so a transient blip on every mirror can't reject Promise.any and kill
+    // the whole assessment (withTimeout also degrades a hard rejection to the
+    // fallback, but this keeps fetchFromOverpass itself non-throwing).
     const [core, green] = await Promise.all([
-      runQuery(overpassQueryCore),
-      runQuery(overpassQueryGreen, 1),
+      runQuery(overpassQueryCore, 1).catch(() => []),
+      runQuery(overpassQueryGreen, 1).catch(() => []),
     ]);
     const merged = [...core, ...green];
     console.log(`[timing] overpass phase: ${Date.now() - tOverpass}ms (core ${core.length} + green ${green.length} = ${merged.length} elements)`);

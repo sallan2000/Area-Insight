@@ -55,9 +55,9 @@ OUT_CSV = os.path.join(ROOT, "server", "data", "import", "census-demographics-in
 # side (which has network access). Alternatively put them in
 # server/data/import/sources.json as {age, tenure, car}.
 ONS_URLS = {
-    "age": "PASTE_ONS_TS001_AGE_LSOA_CSV_URL",
-    "tenure": "PASTE_ONS_TS004_TENURE_LSOA_CSV_URL",
-    "car": "PASTE_ONS_TS030_CAR_LSOA_CSV_URL",
+    "age": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts007a.zip",
+    "tenure": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts054.zip",
+    "car": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts045.zip",
 }
 # ------------------------------------------------------------------------------
 

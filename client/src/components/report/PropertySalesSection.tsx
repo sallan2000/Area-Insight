@@ -138,14 +138,22 @@ export function PropertySalesSection({ data }: { data?: PropertySalesData | null
                 <p className="text-xs text-muted-foreground">Sales recorded</p>
                 <p className="text-lg font-bold text-foreground">{data.salesCount}</p>
               </div>
-              <div className="p-3 bg-gray-50 rounded-lg border border-border">
-                <p className="text-xs text-muted-foreground">Lowest</p>
-                <p className="text-lg font-bold text-foreground">{data.minPrice ? gbFormat(data.minPrice) : "—"}</p>
-              </div>
-              <div className="p-3 bg-gray-50 rounded-lg border border-border">
-                <p className="text-xs text-muted-foreground">Highest</p>
-                <p className="text-lg font-bold text-foreground">{data.maxPrice ? gbFormat(data.maxPrice) : "—"}</p>
-              </div>
+              {/* Lowest/Highest are only meaningful for the per-postcode view, where
+                  the source actually records min/max on the exact street. The district
+                  (outcode) summary stores only avg + count, so hide these rather than
+                  show misleading "—" blanks (option A). */}
+              {data.perPostcode && data.minPrice != null && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                  <p className="text-xs text-muted-foreground">Lowest</p>
+                  <p className="text-lg font-bold text-foreground">{gbFormat(data.minPrice)}</p>
+                </div>
+              )}
+              {data.perPostcode && data.maxPrice != null && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                  <p className="text-xs text-muted-foreground">Highest</p>
+                  <p className="text-lg font-bold text-foreground">{gbFormat(data.maxPrice)}</p>
+                </div>
+              )}
             </div>
 
             {data.perPostcode && data.sales && data.sales.length > 0 && (

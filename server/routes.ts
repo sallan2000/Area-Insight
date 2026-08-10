@@ -1057,7 +1057,14 @@ async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T, label: str
 // API is slow, the report still renders from whatever finished; the slow task's
 // slot is filled with its existing "unavailable" fallback. Keeps one wedged
 // provider (e.g. Overpass or Police UK) from killing the entire request.
-const PARALLEL_DEADLINE_MS = 20000;
+//
+// MUST stay at/above the Overpass per-mirror budget (runQuery uses a 35s
+// AbortSignal). Overpass is the dominant cost (~17-26s for dense postcodes —
+// measured 17.4s for central London) and ALL of transport / schools / amenities /
+// green-space / health derive from its single core query. At the old 20s value
+// Overpass routinely outran the deadline, fell back to an empty element set, and
+// those pillars silently came back empty. 35s lets a healthy Overpass finish.
+const PARALLEL_DEADLINE_MS = 35000;
 
 // Helper function to fetch external data
 async function fetchAreaMetrics(postcode: string) {
@@ -1088,8 +1095,12 @@ async function fetchAreaMetrics(postcode: string) {
 
   // --- Define all independent async tasks (all only need lat/lng/postcode from geocoding) ---
 
-  // 2a. Overpass/OSM — query timeout reduced to 25 s; AbortSignal.timeout(25000) per mirror
+  // 2a. Overpass/OSM — each mirror races with a 35 s AbortSignal (matches
+  // PARALLEL_DEADLINE_MS). A healthy Overpass finishes inside this; a wedged
+  // mirror fails fast so the race falls back to a working one.
   const overpassEndpoints = [
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.osm.ch/api/interpreter"
@@ -1550,39 +1561,39 @@ async function fetchAreaMetrics(postcode: string) {
   const parallelTasks = [
     withTimeout(fetchFromOverpass().then((r) => { setPhase(postcode, 'overpass', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'overpass', 'error'); return { elements: [], greenFailed: true, coreFailed: true }; })(),
+      () => { setPhase(postcode, 'overpass', 'error'); return { elements: [], greenFailed: true, coreFailed: true }; },
       'overpass'),
     withTimeout(fetchCrimeData().then((r) => { setPhase(postcode, 'crime', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'crime', 'error'); return null; })(),
+      () => { setPhase(postcode, 'crime', 'error'); return null; },
       'crime'),
     withTimeout(fetchNearest().then((r) => { setPhase(postcode, 'nearby', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'nearby', 'error'); return []; })(),
+      () => { setPhase(postcode, 'nearby', 'error'); return []; },
       'nearby'),
     withTimeout(getAirQualityFromDefra().then((r) => { setPhase(postcode, 'air', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'air', 'error'); return null; })(),
+      () => { setPhase(postcode, 'air', 'error'); return null; },
       'air'),
     withTimeout(getFloodRisk().then((r) => { setPhase(postcode, 'flood', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'flood', 'error'); return null; })(),
+      () => { setPhase(postcode, 'flood', 'error'); return null; },
       'flood'),
     withTimeout(getMobileCoverage().then((r) => { setPhase(postcode, 'mobile', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'mobile', 'error'); return []; })(),
+      () => { setPhase(postcode, 'mobile', 'error'); return []; },
       'mobile'),
     withTimeout(getBroadbandAvailability().then((r) => { setPhase(postcode, 'broadband', 'done'); return r as any; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'broadband', 'error'); return []; })(),
+      () => { setPhase(postcode, 'broadband', 'error'); return []; },
       'broadband'),
     withTimeout(getEvChargers().then((r) => { setPhase(postcode, 'ev', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'ev', 'error'); return []; })(),
+      () => { setPhase(postcode, 'ev', 'error'); return []; },
       'ev'),
     withTimeout(fetchEpc(postcode).then((r) => { setPhase(postcode, 'epc', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      (() => { setPhase(postcode, 'epc', 'error'); return { available: false, reason: 'timeout' }; })(),
+      () => { setPhase(postcode, 'epc', 'error'); return { available: false, reason: 'timeout' }; },
       'epc'),
   ];
   const [

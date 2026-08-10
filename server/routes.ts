@@ -382,6 +382,8 @@ interface ProcessElementsInput {
   floodRisk: any;
   mobile: any[];
   broadband: any[];
+  mobileUnavailable?: string | null;
+  broadbandUnavailable?: string | null;
   evChargers: any[];
   crimeDataUnavailable: boolean;
   greenHealthFailed?: boolean;
@@ -400,7 +402,7 @@ const BAND_MULTIPLIER: Record<string, number> = {
 };
 
 function processElements(input: ProcessElementsInput) {
-  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, evChargers, crimeDataUnavailable, greenHealthFailed, epc, demographics } = input;
+  const { elements, overpassFailed, airQualityEstimated, lat, lng, geoData, crimesData, crimeCount, crimeTrend, severityScore, street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes, nearestPostcodes, streetName, neighbourhoodInfo, prefetchedAirQuality, floodRisk, mobile, broadband, mobileUnavailable, broadbandUnavailable, evChargers, crimeDataUnavailable, greenHealthFailed, epc, demographics } = input;
   // Deduplicate and filter elements with distance
   const elementsWithDistance = elements.map((e: any) => {
     const elLat = e.lat || e.center?.lat;
@@ -929,7 +931,9 @@ function processElements(input: ProcessElementsInput) {
     demographics: demographics ?? null,
     connectivity: {
       broadband: broadband,
-      mobile: mobile
+      broadbandUnavailable: broadbandUnavailable ?? null,
+      mobile: mobile,
+      mobileUnavailable: mobileUnavailable ?? null,
     },
     evChargers,
     nearestPostcodes,
@@ -1441,18 +1445,29 @@ async function fetchAreaMetrics(postcode: string) {
     return { likelihood: "Very Low", suitability: "High", description: "Flood risk data unavailable. Assumed very low risk.", station: null, activeAlerts: 0, source: "Estimated" };
   };
 
-  // 2e. Mobile coverage (Ofcom)
-  const getMobileCoverage = async (): Promise<any[]> => {
+  // 2e. Mobile coverage (Ofcom Connected Nations).
+  // Ofcom's APIM subscription key is ONE key for both mobile + broadband. We read
+  // it from OFCOM_API_KEY, allowing OFCOM_BROADBAND_API_KEY as an optional
+  // per-endpoint override. (Requiring two separate secrets was a footgun: setting
+  // only one in Replit Secrets left the other half silently empty.)
+  const getOfcomKey = (override?: string): string | null => {
+    const k = override || process.env.OFCOM_API_KEY || process.env.OFCOM_BROADBAND_API_KEY;
+    return k && k.trim() ? k.trim() : null;
+  };
+  const getMobileCoverage = async (): Promise<{ data: any[]; unavailable: string | null }> => {
     const tMobile = Date.now();
     try {
-      const apiKey = process.env.OFCOM_API_KEY;
-      if (!apiKey) { console.error("[Ofcom Mobile] OFCOM_API_KEY environment variable is not set — mobile coverage will be unavailable."); return []; }
+      const apiKey = getOfcomKey();
+      if (!apiKey) {
+        console.error("[Ofcom Mobile] OFCOM_API_KEY environment variable is not set — mobile coverage unavailable.");
+        return { data: [], unavailable: "Ofcom API key not configured" };
+      }
       const cleanPostcode = geoData.result.postcode.replace(/\s+/g, "").toUpperCase();
       const res = await fetch(`https://api-proxy.ofcom.org.uk/mobile/coverage/${cleanPostcode}`, { headers: { "Ocp-Apim-Subscription-Key": apiKey }, signal: AbortSignal.timeout(10000) });
-      if (!res.ok) throw new Error(`Ofcom API error: ${res.status}`);
+      if (!res.ok) { console.error(`[Ofcom Mobile] API HTTP ${res.status}`); return { data: [], unavailable: `Ofcom API error (${res.status})` }; }
       const data = await res.json();
       const addresses: any[] = data?.Availability || [];
-      if (addresses.length === 0) return [];
+      if (addresses.length === 0) { console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms (no addresses)`); return { data: [], unavailable: null }; }
       if (!ofcomMobileSchemaLogged) {
         ofcomMobileSchemaLogged = true;
         const sample = Object.fromEntries(Object.entries(addresses[0]).filter(([k]) => k !== "UPRN" && k !== "PostCode" && k !== "AddressShortDescription"));
@@ -1462,22 +1477,22 @@ async function fetchAreaMetrics(postcode: string) {
       const covered = (field: string) => { const total = addresses.length; if (total === 0) return false; return addresses.filter((a) => (a[field] ?? 0) > 0).length / total >= 0.5; };
       const result = ops.map(({ name, prefix }) => ({ name, data4GOutdoor: covered(`${prefix}DataOutdoor`), data4GIndoor: covered(`${prefix}DataIndoor`) }));
       console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms`);
-      return result;
-    } catch (e) { console.error("Mobile coverage fetch failed:", e); console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms (failed)`); return []; }
+      return { data: result, unavailable: null };
+    } catch (e) { console.error("Mobile coverage fetch failed:", e); console.log(`[timing] mobile coverage phase: ${Date.now() - tMobile}ms (failed)`); return { data: [], unavailable: "fetch failed" }; }
   };
 
   // 2f. Broadband (Ofcom)
-  const getBroadbandAvailability = async (): Promise<any[]> => {
+  const getBroadbandAvailability = async (): Promise<{ data: any[]; unavailable: string | null }> => {
     const tBroadband = Date.now();
     try {
-      const apiKey = process.env.OFCOM_BROADBAND_API_KEY;
-      if (!apiKey) throw new Error("OFCOM_BROADBAND_API_KEY not set");
+      const apiKey = getOfcomKey(process.env.OFCOM_BROADBAND_API_KEY);
+      if (!apiKey) { console.error("[Ofcom Broadband] OFCOM_API_KEY environment variable is not set — broadband unavailable."); return { data: [], unavailable: "Ofcom API key not configured" }; }
       const cleanPostcode = geoData.result.postcode.replace(/\s+/g, "").toUpperCase();
       const res = await fetch(`https://api-proxy.ofcom.org.uk/broadband/coverage/${cleanPostcode}`, { headers: { "Ocp-Apim-Subscription-Key": apiKey }, signal: AbortSignal.timeout(10000) });
-      if (!res.ok) throw new Error(`Ofcom broadband API error: ${res.status}`);
+      if (!res.ok) { console.error(`[Ofcom Broadband] API HTTP ${res.status}`); return { data: [], unavailable: `Ofcom API error (${res.status})` }; }
       const data = await res.json();
       const addresses: any[] = data?.Availability || [];
-      if (addresses.length === 0) return [];
+      if (addresses.length === 0) { console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms (no addresses)`); return { data: [], unavailable: null }; }
       const maxOf = (field: string) => addresses.reduce((max: number, a: any) => Math.max(max, a[field] ?? 0), 0);
       const result = [
         { type: "Standard",  downField: "MaxBbPredictedDown",   upField: "MaxBbPredictedUp" },
@@ -1485,8 +1500,8 @@ async function fetchAreaMetrics(postcode: string) {
         { type: "Ultrafast", downField: "MaxUfbbPredictedDown", upField: "MaxUfbbPredictedUp" },
       ].map(({ type, downField, upField }) => { const maxDownMbps = maxOf(downField); return { type, maxDownMbps, maxUpMbps: maxOf(upField), available: maxDownMbps > 0 }; });
       console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms`);
-      return result;
-    } catch (e) { console.error("Broadband availability fetch failed:", e); console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms (failed)`); return []; }
+      return { data: result, unavailable: null };
+    } catch (e) { console.error("Broadband availability fetch failed:", e); console.log(`[timing] broadband phase: ${Date.now() - tBroadband}ms (failed)`); return { data: [], unavailable: "fetch failed" }; }
   };
 
   // 2g. EV chargers (OpenChargeMap)
@@ -1635,11 +1650,11 @@ async function fetchAreaMetrics(postcode: string) {
       'flood'),
     withTimeout(getMobileCoverage().then((r) => { setPhase(postcode, 'mobile', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
-      () => { setPhase(postcode, 'mobile', 'error'); return []; },
+      () => { setPhase(postcode, 'mobile', 'error'); return { data: [], unavailable: 'timeout' }; },
       'mobile'),
     withTimeout(getBroadbandAvailability().then((r) => { setPhase(postcode, 'broadband', 'done'); return r as any; }),
       PARALLEL_DEADLINE_MS,
-      () => { setPhase(postcode, 'broadband', 'error'); return []; },
+      () => { setPhase(postcode, 'broadband', 'error'); return { data: [], unavailable: 'timeout' }; },
       'broadband'),
     withTimeout(getEvChargers().then((r) => { setPhase(postcode, 'ev', 'done'); return r; }),
       PARALLEL_DEADLINE_MS,
@@ -1656,12 +1671,19 @@ async function fetchAreaMetrics(postcode: string) {
     nearestPostcodes,
     prefetchedAirQuality,
     floodRisk,
-    mobile,
-    broadband,
+    mobileWrapped,
+    broadbandWrapped,
     evChargers,
     epc
   ] = await Promise.all(parallelTasks);
   console.log(`[timing] parallel phase total: ${Date.now() - tParallel}ms`);
+
+  // Ofcom functions now return { data, unavailable } so we can tell the UI whether a
+  // blank result means "genuinely no coverage here" vs "data source unavailable".
+  const mobile = mobileWrapped.data;
+  const broadband = broadbandWrapped.data;
+  const mobileUnavailable = mobileWrapped.unavailable;
+  const broadbandUnavailable = broadbandWrapped.unavailable;
 
   // `overpassFailed` (both queries empty) means genuinely no OSM data at all.
   // A *green-only* failure (common for Scotland/NI where Overpass is busier) must
@@ -1749,6 +1771,7 @@ async function fetchAreaMetrics(postcode: string) {
     street, city, violentCrimes, burglaryCrimes, asbCrimes, vehicleCrimes, drugCrimes,
     nearestPostcodes, streetName, neighbourhoodInfo,
     prefetchedAirQuality, floodRisk, mobile, broadband, evChargers,
+    mobileUnavailable, broadbandUnavailable,
     crimeDataUnavailable, greenHealthFailed, epc, demographics
   });
 }

@@ -17,7 +17,9 @@ interface MobileOperator {
 interface ConnectivitySectionProps {
   connectivity: {
     broadband: BroadbandRecord[];
+    broadbandUnavailable?: string | null;
     mobile: MobileOperator[] | { fourG?: string };
+    mobileUnavailable?: string | null;
   };
 }
 
@@ -25,6 +27,8 @@ export function ConnectivitySection({ connectivity }: ConnectivitySectionProps) 
   const broadband = Array.isArray(connectivity?.broadband) ? connectivity.broadband : [];
   const mobileOperators = Array.isArray(connectivity?.mobile) ? connectivity.mobile as MobileOperator[] : null;
   const mobileLegacy = !mobileOperators && (connectivity?.mobile as any)?.fourG;
+  const broadbandUnavailable = connectivity?.broadbandUnavailable ?? null;
+  const mobileUnavailable = connectivity?.mobileUnavailable ?? null;
 
   return (
     <section className="space-y-6">
@@ -64,7 +68,9 @@ export function ConnectivitySection({ connectivity }: ConnectivitySectionProps) 
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No broadband data available</p>
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {broadbandUnavailable ? `Data unavailable — ${broadbandUnavailable}.` : "No broadband data available"}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -106,7 +112,9 @@ export function ConnectivitySection({ connectivity }: ConnectivitySectionProps) 
               </div>
             ) : (
               <div className="p-6 bg-gray-50 rounded-xl border border-border text-center" data-testid="mobile-no-data">
-                <p className="text-sm text-muted-foreground">No data available</p>
+                <p className="text-sm text-muted-foreground">
+                  {mobileUnavailable ? `Data unavailable — ${mobileUnavailable}.` : "No data available"}
+                </p>
               </div>
             )}
           </CardContent>

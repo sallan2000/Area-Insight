@@ -1131,19 +1131,50 @@ async function fetchAreaMetrics(postcode: string) {
       return els;
     };
     try {
-      return await Promise.any(
-        overpassEndpoints.map(ep =>
-          tryMirror(ep).catch((e: any) => { console.warn(`Overpass (${ep}) failed:`, e.message); throw e; })
-        )
-      );
+      // Race mirrors but prefer a DATA-BEARING result: resolve on the first non-empty
+      // response, and only treat the query as genuinely sparse (empty) once EVERY mirror
+      // has responded empty. This stops a fast mirror that returns 0 elements (e.g. a
+      // cached "no data" answer, or a hot-but-empty shard) from winning Promise.any ahead
+      // of a slower mirror that actually has features — which would zero out all OSM
+      // pillars for a real area.
+      return await firstNonEmptyMirror(overpassEndpoints, tryMirror);
     } catch (e) {
-      // One retry on the green query (it's the slower, more failure-prone half for
-      // Scotland/NI where Overpass is busier). Re-shuffle mirror order to prefer a
-      // different mirror first.
+      // Reached only when EVERY mirror errored (HTTP/truncation). Genuinely sparse areas
+      // resolve with [] above and never hit this. Retry once (the green query is the
+      // slower, more failure-prone half for Scotland/NI where Overpass is busier).
       if (retries <= 0) throw e;
       console.warn(`Overpass query failed all mirrors — retrying once`);
       return runQuery(query, retries - 1).catch(() => []);
     }
+  };
+
+  // Resolve with the first NON-EMPTY mirror result; only settle empty if every mirror
+  // returned empty (genuinely sparse area). If every mirror errored (HTTP/truncation),
+  // reject so the caller's retry-once path engages instead of silently zeroing data.
+  const firstNonEmptyMirror = async (
+    endpoints: string[],
+    tryMirrorFn: (ep: string) => Promise<any[]>
+  ): Promise<any[]> => {
+    return new Promise((resolve, reject) => {
+      let pending = endpoints.length;
+      let sawEmpty = false;
+      const settle = () => {
+        if (sawEmpty) resolve([]);
+        else reject(new Error("Overpass: all mirrors returned errors"));
+      };
+      for (const ep of endpoints) {
+        tryMirrorFn(ep)
+          .then((els) => {
+            if (els.length > 0) { resolve(els); return; }
+            sawEmpty = true;
+            if (--pending === 0) settle();
+          })
+          .catch((e: any) => {
+            console.warn(`Overpass (${ep}) failed:`, e.message);
+            if (--pending === 0) settle();
+          });
+      }
+    });
   };
 
   const fetchFromOverpass = async (): Promise<{ elements: any[]; greenFailed: boolean; coreFailed: boolean }> => {

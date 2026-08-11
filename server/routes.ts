@@ -1121,12 +1121,13 @@ async function fetchAreaMetrics(postcode: string) {
         throw new Error(`Overpass query cut short on ${endpoint}: ${data.remark.slice(0, 120)}`);
       }
       const els: any[] = data.elements || [];
-      // Empty result from a mirror almost always means the query was cut off before
-      // finding nearby features — reject so the race tries other mirrors. A genuinely
-      // feature-free area will make all mirrors throw, and we return [] for that query.
-      if (els.length === 0) {
-        throw new Error(`Overpass (${endpoint}): returned 0 elements — query likely timed out on server`);
-      }
+      // A 0-element response is NOT treated as a failure. Overpass genuinely returns
+      // an empty set for sparse areas, and rejecting it (the old behaviour) forced
+      // needless mirror hops, amplified cold-start cost, and — under Promise.any — made
+      // a sparse result indistinguishable from a real timeout. We only reject on a
+      // true failure signal: an HTTP error, or a `remark` showing the query was cut
+      // short server-side (a real timeout). A clean empty result is returned as-is and
+      // downstream "BOTH queries empty" logic still flags a genuinely feature-free area.
       return els;
     };
     try {

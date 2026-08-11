@@ -42,17 +42,14 @@ const helmetMiddleware = helmet({
       defaultSrc: ["'self'"],
       scriptSrc: [
         "'self'",
-        "https://unpkg.com",
       ],
       styleSrc: [
         "'self'",
         "https://fonts.googleapis.com",
-        "https://unpkg.com",
       ],
       styleSrcElem: [
         "'self'",
         "https://fonts.googleapis.com",
-        "https://unpkg.com",
       ],
       fontSrc: [
         "'self'",
@@ -63,7 +60,6 @@ const helmetMiddleware = helmet({
         "'self'",
         "data:",
         "https://*.tile.openstreetmap.org",
-        "https://unpkg.com",
       ],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],

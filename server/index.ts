@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
-import { registerRoutes } from "./routes";
+import { registerRoutes, warmUpOverpass } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -154,4 +154,8 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+
+  // Warm the Overpass connection pool + mirror caches so the first search after a
+  // cold boot doesn't always fail the OSM pillar (cold-start resilience: Option A+C).
+  warmUpOverpass();
 })();

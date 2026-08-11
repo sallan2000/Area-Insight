@@ -990,8 +990,47 @@ async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T | (() => T)
 // Overpass routinely outran the deadline, fell back to an empty element set, and
 // those pillars silently came back empty. 35s lets a healthy Overpass finish.
 const PARALLEL_DEADLINE_MS = 35000;
+// Longer budget for the Overpass task only: the first search after a cold boot often
+// hits slow/cold mirrors, and a genuine 35 s cap would zero out green/health/amenities.
+const OVERPASS_DEADLINE_MS = 60000;
 
 // Helper function to fetch external data
+
+// Shared Overpass mirror list — used by both fetchAreaMetrics and the cold-start
+// warm-up below. The order is occasionally shuffled at call time so we don't always
+// hammer the same first mirror.
+const OVERPASS_ENDPOINTS = [
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter"
+];
+
+// Cold-start resilience (Option A+C): on a freshly booted or re-woken server every
+// Overpass mirror is cold and its caches are empty, so the FIRST real user search
+// usually fails the OSM pillar before succeeding on later searches. Fire one
+// lightweight query at boot to warm the undici connection pool + mirror caches.
+// Best-effort and fire-and-forget — any failure is ignored and it never blocks
+// startup or the request path.
+export function warmUpOverpass(): void {
+  const warmQuery =
+    `[out:json][timeout:25];` +
+    `(node["amenity"="cafe"](around:500,55.8263,-4.2852);node["highway"="bus_stop"](around:500,55.8263,-4.2852););out body 5;`;
+  Promise.any(
+    OVERPASS_ENDPOINTS.map((ep) =>
+      fetch(ep, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "ScoreMyStreet/1.0 (https://replit.com)" },
+        body: `data=${encodeURIComponent(warmQuery)}`,
+        signal: AbortSignal.timeout(20000),
+      }).then((r) => r.json())
+    )
+  )
+    .then(() => console.log("[boot] Overpass warm-up complete"))
+    .catch(() => console.warn("[boot] Overpass warm-up skipped — mirrors still cold, first search may fall back"));
+}
+
 async function fetchAreaMetrics(postcode: string) {
   const t0 = Date.now();
   initProgress(postcode); // start ticking the "Analysing Area" dialog
@@ -1018,13 +1057,7 @@ async function fetchAreaMetrics(postcode: string) {
   // 2a. Overpass/OSM — each mirror races with a 35 s AbortSignal (matches
   // PARALLEL_DEADLINE_MS). A healthy Overpass finishes inside this; a wedged
   // mirror fails fast so the race falls back to a working one.
-  const overpassEndpoints = [
-    "https://overpass.private.coffee/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.osm.ch/api/interpreter"
-  ];
+  const overpassEndpoints = OVERPASS_ENDPOINTS;
   // Two queries instead of one: the original core (transport/schools/amenities)
   // and a lighter green+health query. Splitting keeps each inside the per-mirror
   // time budget so dense English postcodes (where the combined query previously
@@ -1074,7 +1107,7 @@ async function fetchAreaMetrics(postcode: string) {
         method: "POST",
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
         body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(35000)
+        signal: AbortSignal.timeout(45000)
       });
       if (!response.ok) throw new Error(`Overpass (${endpoint}): HTTP ${response.status}`);
       const data = await response.json();
@@ -1548,7 +1581,7 @@ async function fetchAreaMetrics(postcode: string) {
   // a backstop for the (rare) case where several are slow at once.
   const parallelTasks = [
     withTimeout(fetchFromOverpass().then((r) => { setPhase(postcode, 'overpass', 'done'); return r; }),
-      PARALLEL_DEADLINE_MS,
+      OVERPASS_DEADLINE_MS,
       () => { setPhase(postcode, 'overpass', 'error'); return { elements: [], greenFailed: true, coreFailed: true }; },
       'overpass'),
     withTimeout(fetchCrimeData().then((r) => { setPhase(postcode, 'crime', 'done'); return r; }),
@@ -2009,9 +2042,10 @@ export async function registerRoutes(
 
       // Overall request ceiling. The parallel phase already self-limits at
       // PARALLEL_DEADLINE_MS; this guards the slower tail (geocode, scoring, DB
-      // writes) so a wedged upstream can never hang the connection past ~45s.
+      // writes) so a wedged upstream can never hang the connection past ~70s (raised from
+  // 45 s to accommodate the longer cold-start Overpass budget above).
       // On breach we return 504 with a retry hint rather than failing silently.
-      const OVERALL_DEADLINE_MS = 45000;
+      const OVERALL_DEADLINE_MS = 70000;
       const compute = (async () => {
         const data = await fetchAreaMetrics(cleanPostcode);
         const scores = calculateScores(data.metrics, data.metrics.isScotland, data.metrics.isNI);

@@ -1110,7 +1110,7 @@ async function fetchAreaMetrics(postcode: string) {
         method: "POST",
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'ScoreMyStreet/1.0 (https://replit.com)' },
         body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(45000)
+        signal: AbortSignal.timeout(25000)
       });
       if (!response.ok) throw new Error(`Overpass (${endpoint}): HTTP ${response.status}`);
       const data = await response.json();
@@ -1143,10 +1143,12 @@ async function fetchAreaMetrics(postcode: string) {
       return await firstNonEmptyMirror(overpassEndpoints, tryMirror);
     } catch (e) {
       // Reached only when EVERY mirror errored (HTTP/truncation). Genuinely sparse areas
-      // resolve with [] above and never hit this. Retry once (the green query is the
-      // slower, more failure-prone half for Scotland/NI where Overpass is busier).
+      // resolve with [] above and never hit this. Public Overpass mirrors flap — a mirror
+      // that 504s now is often healthy 5-10s later — so retry ONCE after a short delay to
+      // let a wedged mirror recover, instead of immediately re-hitting the same bad moment.
       if (retries <= 0) throw e;
-      console.warn(`Overpass query failed all mirrors — retrying once`);
+      console.warn(`Overpass query failed all mirrors — retrying once after 3s`);
+      await new Promise((r) => setTimeout(r, 3000));
       return runQuery(query, retries - 1).catch(() => []);
     }
   };
@@ -1160,19 +1162,25 @@ async function fetchAreaMetrics(postcode: string) {
   ): Promise<any[]> => {
     return new Promise((resolve, reject) => {
       let pending = endpoints.length;
-      let sawEmpty = false;
+      let sawEmpty = false;   // at least one mirror returned an empty (not errored) result
+      let allEmpty = true;    // EVERY mirror returned empty (no errors) => genuinely sparse
       const settle = () => {
-        if (sawEmpty) resolve([]);
+        // Genuinely sparse only if all mirrors came back empty with zero errors.
+        // If any mirror errored (mixed empty + error), reject so the caller retries
+        // instead of silently zeroing every OSM pillar on a flaky-mirror moment.
+        if (allEmpty && sawEmpty) resolve([]);
         else reject(new Error("Overpass: all mirrors returned errors"));
       };
       for (const ep of endpoints) {
         tryMirrorFn(ep)
           .then((els) => {
+            // A resolved (even empty) response is NOT an error, so allEmpty stays true.
             if (els.length > 0) { resolve(els); return; }
             sawEmpty = true;
             if (--pending === 0) settle();
           })
           .catch((e: any) => {
+            allEmpty = false; // an error means we can't call this area "sparse"
             console.warn(`Overpass (${ep}) failed:`, e.message);
             if (--pending === 0) settle();
           });

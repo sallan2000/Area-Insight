@@ -220,26 +220,34 @@ export default function Report() {
 
   const captureExportView = async (): Promise<string> => {
     const { toPng } = await import('html-to-image');
-    return new Promise<string>((resolve, reject) => {
-      setIsExporting(true);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(async () => {
-          try {
-            if (!exportRef.current) { reject(new Error("Export view not ready")); setIsExporting(false); return; }
-            const dataUrl = await toPng(exportRef.current, { cacheBust: true, backgroundColor: '#ffffff' });
-            setIsExporting(false);
-            resolve(dataUrl);
-          } catch (e) {
-            setIsExporting(false);
-            reject(e);
-          }
-        });
+    const node = exportRef.current;
+    if (!node) return Promise.reject(new Error("Export view not ready"));
+    // Ensure fonts/layout are settled so the captured image isn't blank or
+    // missing glyphs. The export node is mounted behind the page (zIndex -1),
+    // so it is always laid out and ready to capture.
+    if (document.fonts?.ready) {
+      try { await document.fonts.ready; } catch { /* ignore */ }
+    }
+    const width = node.scrollWidth || 1100;
+    const height = node.scrollHeight;
+    try {
+      const dataUrl = await toPng(node, {
+        cacheBust: true,
+        backgroundColor: '#ffffff',
+        width,
+        height,
+        pixelRatio: 2,
+        style: { transform: 'scale(1)', transformOrigin: 'top left', margin: '0' },
       });
-    });
+      return dataUrl;
+    } catch (e) {
+      throw e;
+    }
   };
 
   const exportAsImage = async () => {
     if (!report) return;
+    setIsExporting(true);
     try {
       const dataUrl = await captureExportView();
       const link = document.createElement('a');
@@ -250,36 +258,57 @@ export default function Report() {
     } catch (err) {
       console.error(err);
       toast({ title: "Export failed", description: "Could not export as image.", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const exportAsPDF = async () => {
     if (!report) return;
+    setIsExporting(true);
     try {
       const [dataUrl, { jsPDF }] = await Promise.all([
         captureExportView(),
         import('jspdf'),
       ]);
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgProps = pdf.getImageProperties(dataUrl);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      let remainingHeight = pdfHeight;
-      let position = 0;
-      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
-      remainingHeight -= pageHeight;
-      while (remainingHeight > 0) {
-        position = remainingHeight - pdfHeight;
-        pdf.addPage();
-        pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
-        remainingHeight -= pageHeight;
+      const imgProps = pdf.getImageProperties(dataUrl);
+      // Scale the full-width image to page width, then slice across pages.
+      const imgHeight = (imgProps.height * pageWidth) / imgProps.width;
+      const imgHeightPx = imgProps.height;
+      const pageHeightPx = (pageHeight * imgHeightPx) / imgHeight; // page height in source px
+      let rendered = 0;
+      while (rendered < imgHeightPx) {
+        const sliceH = Math.min(pageHeightPx, imgHeightPx - rendered);
+        // Capture each slice as its own image so pages don't overlap.
+        const { toPng } = await import('html-to-image');
+        const node = exportRef.current!;
+        const sliceUrl = await toPng(node, {
+          cacheBust: true,
+          backgroundColor: '#ffffff',
+          width: node.scrollWidth || 1100,
+          height: sliceH,
+          pixelRatio: 2,
+          style: {
+            transform: `translateY(${-rendered}px)`,
+            transformOrigin: 'top left',
+            margin: '0',
+          },
+        });
+        const sliceImgHeight = (sliceH * pageWidth) / (node.scrollWidth || 1100);
+        if (rendered > 0) pdf.addPage();
+        pdf.addImage(sliceUrl, 'PNG', 0, 0, pageWidth, sliceImgHeight);
+        rendered += sliceH;
       }
       pdf.save(`ScoreMyStreet-${report.postcode}.pdf`);
       toast({ title: "PDF exported!", description: "Your report has been saved as a PDF." });
     } catch (err) {
       console.error(err);
       toast({ title: "Export failed", description: "Could not export as PDF.", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1043,22 +1072,22 @@ export default function Report() {
         </main>
       </div>
 
-      {/* Hidden export-quality render — all sections expanded, no scroll limits */}
-      {isExporting && (
-        <div
-          ref={exportRef}
-          style={{ position: "fixed", left: -9999, top: 0, zIndex: -1, pointerEvents: "none" }}
-          aria-hidden="true"
-        >
-          <ReportExportView
-            report={report}
-            scores={scores}
-            raw={raw}
-            overallScore={overallScore}
-            safetyBreakdownItems={safetyBreakdownItems}
-          />
-        </div>
-      )}
+      {/* Hidden export-quality render — all sections expanded, no scroll limits.
+          Always mounted (behind the page) so it is laid out and ready to capture;
+          capturing a conditionally-mounted off-screen node produced blank images. */}
+      <div
+        ref={exportRef}
+        style={{ position: "fixed", left: 0, top: 0, zIndex: -1, pointerEvents: "none", opacity: 0, width: 1100, overflow: "hidden" }}
+        aria-hidden="true"
+      >
+        <ReportExportView
+          report={report}
+          scores={scores}
+          raw={raw}
+          overallScore={overallScore}
+          safetyBreakdownItems={safetyBreakdownItems}
+        />
+      </div>
     </div>
   );
 }

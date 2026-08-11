@@ -1,6 +1,71 @@
+import crypto from "crypto";
 import rateLimit, { type Store, type Options, type ClientRateLimitInfo } from "express-rate-limit";
 
 export const REFRESH_COOLDOWN_MS = 60 * 60 * 1000;
+
+/**
+ * Anonymous-session rate-limit keying.
+ *
+ * The default express-rate-limit key is the client IP derived from
+ * X-Forwarded-For. With `app.set("trust proxy", 1)` Replit's proxy is trusted,
+ * but any caller that can set XFF (or a shared NAT/office egress) can rotate the
+ * apparent IP and evade the anonymous quota — the #1 abuse vector in the threat
+ * model (third-party quota exhaustion: postcodes.io, police.uk, Overpass, Ofcom).
+ *
+ * To stop IP-spoof evasion we key anonymous traffic by a first-party HttpOnly
+ * cookie set by this server, not by IP. Authenticated traffic keeps the stable
+ * per-user key. The IP is still used (via the proxy) only as a fallback.
+ */
+const ANON_COOKIE = "sms_anon";
+const ANON_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function readAnonCookie(req: any): string | null {
+  const header = req.headers?.cookie;
+  if (typeof header !== "string" || header.length === 0) return null;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    if (part.slice(0, idx).trim() === ANON_COOKIE) {
+      const val = part.slice(idx + 1).trim();
+      return val || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the anonymous ID, issuing and setting the cookie if absent.
+ * Modifies `res` only when a new cookie is needed, so repeated requests are
+ * stable. Falls back to the request IP if the cookie cannot be written.
+ */
+function ensureAnonId(req: any, res: any): string {
+  const existing = readAnonCookie(req);
+  if (existing) return existing;
+  const id = crypto.randomUUID();
+  const secure = process.env.NODE_ENV === "production";
+  try {
+    res.cookie(ANON_COOKIE, id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure,
+      maxAge: ANON_COOKIE_MAX_AGE_MS,
+      path: "/",
+    });
+  } catch {
+    // res.cookie unavailable (e.g. already-sent headers) — fall back to IP.
+    return clientIp(req);
+  }
+  return id;
+}
+
+function clientIp(req: any): string {
+  const ip =
+    req.ip ||
+    req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    "unknown";
+  return String(ip);
+}
 
 /**
  * A memory store for express-rate-limit that is bounded in both time and
@@ -102,6 +167,13 @@ export const assessRateLimit = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: new BoundedMemoryStore(),
+  // Anonymous users keyed by first-party cookie (spoof-proof); signed-in users
+  // keyed by stable user id; falls back to IP if the cookie can't be set.
+  keyGenerator: (req, res) => {
+    const userId = (req as any).user?.claims?.sub;
+    if (userId) return `u:${userId}`;
+    return `a:${ensureAnonId(req, res)}`;
+  },
   message: { message: "Too many assessment requests, please try again later." },
 });
 
@@ -111,5 +183,10 @@ export const shareRateLimit = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   store: new BoundedMemoryStore(),
+  keyGenerator: (req, res) => {
+    const userId = (req as any).user?.claims?.sub;
+    if (userId) return `u:${userId}`;
+    return `a:${ensureAnonId(req, res)}`;
+  },
   message: { message: "Too many share requests, please try again later." },
 });

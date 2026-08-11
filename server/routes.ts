@@ -997,13 +997,16 @@ const OVERPASS_DEADLINE_MS = 60000;
 // Helper function to fetch external data
 
 // Shared Overpass mirror list — used by both fetchAreaMetrics and the cold-start
-// warm-up below. The order is occasionally shuffled at call time so we don't always
-// hammer the same first mirror.
+// warm-up. Ordered best-first: maps.mail.ru is fast and reliably returns data, so it
+// leads; overpass-api.de is slower but dependable as a fallback. overpass.osm.ch is
+// kept LAST deliberately — it answers in ~0.2s but often returns an empty set, so we
+// don't want it winning the race; firstNonEmptyMirror waits for a data-bearing mirror
+// instead of settling on its empty [] . Dead mirrors (kumi.systems, private.coffee,
+// openstreetmap.ru, wnut.eu) were removed — they only waste connections/timeouts.
+// Re-verify with a live curl sweep if this changes.
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.private.coffee/api/interpreter",
   "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
   "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.osm.ch/api/interpreter"
 ];
 

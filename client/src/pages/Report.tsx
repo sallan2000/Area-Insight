@@ -1054,7 +1054,9 @@ export default function Report() {
                     size="sm"
                     className="bg-white hover:bg-gray-100"
                     onClick={() => {
-                      setLocation(`/?postcode=${encodeURIComponent(n.postcode)}`);
+                      // Force a real navigation so the Home page mounts with the
+                      // query parameter and always starts a fresh assessment.
+                      window.location.assign(`/?postcode=${encodeURIComponent(n.postcode)}`);
                     }}
                   >
                     <MapPin className="mr-1 h-3.5 w-3.5 text-muted-foreground" />

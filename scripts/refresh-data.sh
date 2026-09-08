@@ -18,6 +18,7 @@ set -u
 
 MAX_AGE_DAYS="${MAX_AGE_DAYS:-6}"
 FORCE_REFRESH="${FORCE:-0}"
+SKIP_SCHOOLS="${SKIP_SCHOOLS:-0}"
 
 # Print seconds-since-epoch of a file's mtime, or 0 if missing.
 file_age_seconds() {
@@ -46,7 +47,9 @@ echo "[refresh-data] $(date -u +%Y-%m-%dT%H:%M:%SZ) refreshing reference data (m
 
 # --- England schools + Ofsted ratings ---
 SCHOOLS_OUT="server/data/schools.json"
-if should_sync "$SCHOOLS_OUT"; then
+if [ "$SKIP_SCHOOLS" = "1" ]; then
+  echo "[refresh-data] schools sync skipped for this run (SKIP_SCHOOLS=1)"
+elif should_sync "$SCHOOLS_OUT"; then
   echo "[refresh-data] schools.json stale/missing — running sync:schools"
   npm run sync:schools || echo "[refresh-data] WARNING: sync:schools failed"
 else

@@ -313,16 +313,33 @@ function processElements(input: ProcessElementsInput) {
 
   // Green space: parks, gardens, playgrounds, commons, nature reserves, woodland and
   // public greens (landuse). Count AREAS only (way/relation) — node POIs (park
-  // entrances, benches) and noisy natural=grass/scrub/heath tags are excluded, since
-  // raw OSM element counts are dominated by tagging density, not real greenness.
+  // entrances, benches) and generic grass/meadow/wood fragments are excluded unless
+  // they are named. OSM commonly splits woodland and grass into hundreds of small
+  // polygons, so counting every raw element is not a meaningful user-facing total.
   const GREEN_AREA_TAGS = new Set(["park", "garden", "playground", "common", "nature_reserve", "dog_park", "forest"]);
   const GREEN_LANDUSE = new Set(["forest", "recreation_ground", "grass", "village_green", "meadow"]);
+  const seenGreenElements = new Set<string>();
   const greenElements = elementsWithDistance.filter((e: any) => {
     if (e.type === "node") return false; // areas only
-    if (e.tags?.leisure && GREEN_AREA_TAGS.has(e.tags.leisure)) return true;
-    if (e.tags?.landuse && GREEN_LANDUSE.has(e.tags.landuse)) return true;
-    if (e.tags?.natural && ["wood", "wetland", "forest"].includes(e.tags.natural)) return true;
-    return false;
+    const tags = e.tags || {};
+    const isRecognisableGreenArea =
+      (tags.leisure && GREEN_AREA_TAGS.has(tags.leisure)) ||
+      (tags.natural && ["wetland", "forest"].includes(tags.natural)) ||
+      (tags.natural === "wood" && Boolean(tags.name));
+    // Generic grass/meadow landuse is commonly mapped as many small verges,
+    // embankments and field fragments. Only count those when OSM gives the area
+    // a name or an explicit leisure/public-green tag.
+    const isNamedGenericLanduse =
+      tags.landuse && GREEN_LANDUSE.has(tags.landuse) &&
+      Boolean(tags.name);
+    // The core and green Overpass queries can return the same OSM element.
+    // Keep one record per OSM object so duplicate query matches do not inflate
+    // the user-facing count.
+    const key = `${e.type}:${e.id}`;
+    if (!isRecognisableGreenArea && !isNamedGenericLanduse) return false;
+    if (seenGreenElements.has(key)) return false;
+    seenGreenElements.add(key);
+    return true;
   });
   // Health access: GPs, hospitals, clinics, dentists (OSM). Proximity matters most.
   const healthElements = elementsWithDistance.filter((e: any) =>

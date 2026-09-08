@@ -51,4 +51,6 @@ npm run db:push
 # from the local filesystem, so they MUST be regenerated on Replit after every pull.
 # Delegates to scripts/refresh-data.sh (also used by the weekly Scheduled Deployment).
 echo "[post-merge] Refreshing synced reference data..."
-bash scripts/refresh-data.sh || echo "[post-merge] WARNING: refresh-data.sh had non-fatal failures (upstream blip?) — server will degrade gracefully"
+# School sync geocodes ~20k postcodes and belongs in the weekly scheduled refresh,
+# not in the merge hook that blocks the workspace from restarting.
+SKIP_SCHOOLS=1 bash scripts/refresh-data.sh || echo "[post-merge] WARNING: refresh-data.sh had non-fatal failures (upstream blip?) — server will degrade gracefully"

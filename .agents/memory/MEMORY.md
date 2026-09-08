@@ -1,1 +1,2 @@
 - [Recurring rebase conflict fix](rebase-conflict-fix.md) — task merges re-trigger a rebase that puts conflict markers in Report.tsx; fix via Node.js child_process, not bash.
+- [Post-merge reference refresh](post-merge-reference-refresh.md) — large school geocoding refreshes must stay out of the merge hook or setup times out.

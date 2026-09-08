@@ -121,6 +121,10 @@ test.describe("Compare page — postcode validation", () => {
       pageContent.includes(normalisedInvalid) || pageContent.includes(INVALID_PC),
     ).toBeTruthy();
 
+    await expect(
+      page.getByRole("button", { name: "Compare Areas" }),
+    ).toBeEnabled({ timeout: 5_000 });
+
     // Comparison results must NOT appear
     await expect(
       page.getByRole("heading", { name: "Liveability Showdown" }),
@@ -166,6 +170,10 @@ test.describe("Compare page — postcode validation", () => {
     expect(
       pageContent.includes(normalisedInvalid) || pageContent.includes(INVALID_PC),
     ).toBeTruthy();
+
+    await expect(
+      page.getByRole("button", { name: "Compare Areas" }),
+    ).toBeEnabled({ timeout: 5_000 });
 
     await expect(
       page.getByRole("heading", { name: "Liveability Showdown" }),
